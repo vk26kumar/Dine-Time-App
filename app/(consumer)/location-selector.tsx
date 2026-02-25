@@ -1,368 +1,480 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
   TextInput,
-  Alert,
+  FlatList,
+  ActivityIndicator,
+  Keyboard,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { MaterialIcons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import * as Location from "expo-location";
 import { useLocation } from "../../contexts/LocationContext";
-import { theme } from "../../constants/theme";
 
-const getAddressCardTitle = (address: any) => {
-  if (address.label && address.label.length > 0) {
-    return address.label;
-  }
+interface SearchResult {
+  id: string;
+  mainText: string;
+  subText: string;
+  latitude: number;
+  longitude: number;
+  fullAddress: string;
+}
 
-  const parts = address.address.split(",").map((part: string) => part.trim());
-  return parts[0] || "Saved Location";
-};
+// In-memory recents — survives navigation, resets on app restart
+let recentSearches: SearchResult[] = [];
 
 export default function LocationSelector() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const {
-    savedAddresses,
-    currentAddress,
     setCurrentAddress,
     requestLocation,
-    loading,
+    loading: gpsLoading,
   } = useLocation();
-  const [searchQuery, setSearchQuery] = useState("");
 
-  const handleSelectAddress = (address: any) => {
-    setCurrentAddress(address);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [error, setError] = useState("");
+
+  const inputRef = useRef<TextInput>(null);
+
+  // ✅ FIXED: Provide initial value
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ✅ Cleanup when component unmounts
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+    };
+  }, []);
+
+  const handleChange = useCallback((text: string) => {
+    setQuery(text);
+    setError("");
+
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+
+    if (text.trim().length < 3) {
+      setResults([]);
+      return;
+    }
+
+    setSearching(true);
+
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const geocoded = await Location.geocodeAsync(text.trim());
+
+        if (geocoded.length === 0) {
+          setResults([]);
+          setError("No locations found. Try a different search.");
+          setSearching(false);
+          return;
+        }
+
+        const enriched: SearchResult[] = await Promise.all(
+          geocoded.slice(0, 6).map(async (g, i) => {
+            const reversed = await Location.reverseGeocodeAsync({
+              latitude: g.latitude,
+              longitude: g.longitude,
+            });
+
+            const r = reversed[0];
+
+            const mainText = r
+              ? [r.name, r.street].filter(Boolean).join(", ") || text
+              : text;
+
+            const subText = r
+              ? [r.city || r.subregion, r.region, r.country]
+                  .filter(Boolean)
+                  .join(", ")
+              : `${g.latitude.toFixed(4)}, ${g.longitude.toFixed(4)}`;
+
+            const fullAddress = r
+              ? [
+                  r.name,
+                  r.street,
+                  r.city || r.subregion,
+                  r.region,
+                  r.postalCode,
+                  r.country,
+                ]
+                  .filter(Boolean)
+                  .join(", ")
+              : subText;
+
+            return {
+              id: `${g.latitude}-${g.longitude}-${i}`,
+              mainText,
+              subText,
+              latitude: g.latitude,
+              longitude: g.longitude,
+              fullAddress,
+            };
+          }),
+        );
+
+        const seen = new Set<string>();
+        const unique = enriched.filter((r) => {
+          const key = `${r.mainText}|${r.subText}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+
+        setResults(unique);
+      } catch (e) {
+        setError("Search failed. Check your connection.");
+        setResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 500);
+  }, []);
+
+  const handleSelect = (item: SearchResult) => {
+    Keyboard.dismiss();
+
+    recentSearches = [
+      item,
+      ...recentSearches.filter((r) => r.id !== item.id),
+    ].slice(0, 5);
+
+    setCurrentAddress({
+      id: item.id,
+      label: item.mainText,
+      address: item.fullAddress,
+      coordinates: { latitude: item.latitude, longitude: item.longitude },
+      isActive: true,
+    });
+
     router.back();
   };
 
-  const handleUseCurrentLocation = async () => {
-    if (savedAddresses.length >= 2) {
-      Alert.alert(
-        "Location Limit Reached",
-        "You can only save 2 addresses. The oldest saved address will be replaced when a new location is set.",
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Replace Oldest",
-            onPress: async () => {
-              await requestLocation();
-              router.back();
-            },
-          },
-        ]
-      );
-    } else {
-      await requestLocation();
-      router.back();
-    }
+  const handleGPS = async () => {
+    Keyboard.dismiss();
+    await requestLocation();
+    router.back();
   };
 
+  const showRecent = query.trim().length === 0 && recentSearches.length > 0;
+
+  const listData =
+    query.trim().length >= 3 ? results : showRecent ? recentSearches : [];
+
+  const sectionLabel = showRecent
+    ? "RECENT"
+    : results.length > 0
+      ? "RESULTS"
+      : "";
+
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
+    <View style={styles.container}>
+      {/* ── Header ── */}
+      <LinearGradient
+        colors={["#1A0A2E", "#3D1A6E", "#6B2FA0"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[styles.header, { paddingTop: insets.top + 10 }]}
+      >
+        <View style={styles.orb1} />
+        <View style={styles.orb2} />
+
+        <View style={styles.headerRow}>
           <TouchableOpacity
             onPress={() => router.back()}
-            style={styles.backButton}
+            style={styles.backBtn}
           >
-            <MaterialIcons
-              name="arrow-back"
-              size={24}
-              color={theme.colors.text}
-            />
+            <MaterialIcons name="arrow-back" size={20} color="#FFF" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Select Your Location</Text>
-          <View style={{ width: 24 }} />
+          <View style={styles.headerCenter}>
+            <Text style={styles.headerTitle}>Set Location</Text>
+            <Text style={styles.headerSub}>
+              Search any city, area or landmark
+            </Text>
+          </View>
+          <View style={{ width: 38 }} />
         </View>
 
-        {/* Search Bar (Modern Floating Card) */}
-        <View style={styles.searchContainer}>
+        {/* Search bar */}
+        <View style={[styles.searchWrap, focused && styles.searchWrapFocused]}>
           <MaterialIcons
             name="search"
-            size={22}
-            color={theme.colors.textSecondary}
+            size={20}
+            color={focused ? "#FF5A5F" : "#8A95A3"}
           />
           <TextInput
+            ref={inputRef}
             style={styles.searchInput}
-            placeholder="Search for area, building, or street..."
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholderTextColor={theme.colors.textSecondary}
+            placeholder="e.g. Lucknow, Hazratganj, MG Road…"
+            placeholderTextColor={
+              focused ? "#B0B8C4" : "rgba(255,255,255,0.45)"
+            }
+            value={query}
+            onChangeText={handleChange}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            autoFocus
+            returnKeyType="search"
           />
+          {searching ? (
+            <ActivityIndicator size="small" color="#FF5A5F" />
+          ) : query.length > 0 ? (
+            <TouchableOpacity
+              onPress={() => {
+                setQuery("");
+                setResults([]);
+                setError("");
+              }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <View style={styles.clearBtn}>
+                <MaterialIcons name="close" size={12} color="#8A95A3" />
+              </View>
+            </TouchableOpacity>
+          ) : null}
         </View>
 
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Current Location Section */}
-          <View style={styles.cardSection}>
-            <Text style={styles.sectionHeaderTitle}>FIND LOCATION</Text>
-            <TouchableOpacity
-              style={styles.currentLocationButton}
-              onPress={handleUseCurrentLocation}
-              disabled={loading}
-              activeOpacity={0.8}
-            >
-              <View style={styles.currentLocationIcon}>
-                <MaterialIcons
-                  name="my-location"
-                  size={24}
-                  color={theme.colors.primary}
-                />
-              </View>
-              <View style={styles.currentLocationText}>
-                <Text style={styles.currentLocationTitle}>
-                  {loading ? "Detecting location..." : "Use Current Location"}
-                </Text>
-                <Text style={styles.currentLocationSubtitle}>
-                  {currentAddress?.address ||
-                    "Tap to detect your precise location via GPS"}
-                </Text>
-              </View>
-              <MaterialIcons
-                name="chevron-right"
-                size={24}
-                color={theme.colors.textSecondary}
-              />
-            </TouchableOpacity>
-          </View>
+        <View style={styles.accentBar}>
+          <View style={[styles.accentSeg, { backgroundColor: "#FF5A5F" }]} />
+          <View style={[styles.accentSeg, { backgroundColor: "#FF9F43" }]} />
+          <View style={[styles.accentSeg, { backgroundColor: "#A855F7" }]} />
+        </View>
+      </LinearGradient>
 
-          {/* Saved Addresses Section */}
-          {savedAddresses.length > 0 ? (
-            <View style={styles.cardSection}>
-              <Text style={styles.sectionHeaderTitle}>
-                SAVED ADDRESSES ({savedAddresses.length}/2)
-              </Text>
-              {savedAddresses.map((address) => {
-                const isActive = address.id === currentAddress?.id;
-                return (
-                  <TouchableOpacity
-                    key={address.id}
-                    style={[
-                      styles.addressCard,
-                      isActive && styles.selectedAddressCard,
-                    ]}
-                    onPress={() => handleSelectAddress(address)}
-                    activeOpacity={0.8}
-                  >
-                    <View style={styles.addressIconContainer}>
-                      <MaterialIcons
-                        name="location-on"
-                        size={24}
-                        color={
-                          isActive
-                            ? theme.colors.primary
-                            : theme.colors.textSecondary
-                        }
-                      />
-                    </View>
-                    <View style={styles.addressInfo}>
-                      <Text
-                        style={[
-                          styles.addressLabel,
-                          isActive && { color: theme.colors.primary },
-                        ]}
-                      >
-                        {getAddressCardTitle(address)}
-                      </Text>
-                      <Text style={styles.addressText} numberOfLines={2}>
-                        {address.address}
-                      </Text>
-                    </View>
-                    {isActive && (
-                      <View style={styles.activeIndicator}>
-                        <MaterialIcons
-                          name="check-circle"
-                          size={24}
-                          color={theme.colors.primary}
-                        />
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+      {/* GPS Row */}
+      <TouchableOpacity
+        onPress={handleGPS}
+        disabled={gpsLoading}
+        style={styles.gpsRow}
+        activeOpacity={0.8}
+      >
+        <LinearGradient
+          colors={["#FF5A5F", "#FF9F43"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.gpsIcon}
+        >
+          {gpsLoading ? (
+            <ActivityIndicator size="small" color="#FFF" />
           ) : (
-            /* Empty State for Saved Addresses */
-            <View style={styles.emptyState}>
+            <MaterialIcons name="my-location" size={18} color="#FFF" />
+          )}
+        </LinearGradient>
+        <View style={styles.gpsTextWrap}>
+          <Text style={styles.gpsTitle}>
+            {gpsLoading ? "Detecting location…" : "Use current location"}
+          </Text>
+          <Text style={styles.gpsSub}>Auto-detect via GPS</Text>
+        </View>
+        <MaterialIcons name="chevron-right" size={20} color="#C4CAD4" />
+      </TouchableOpacity>
+
+      <View style={styles.listDivider} />
+
+      {/* Results List */}
+      <FlatList
+        data={listData}
+        keyExtractor={(item) => item.id}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingBottom: insets.bottom + 24 },
+        ]}
+        ListHeaderComponent={
+          sectionLabel ? (
+            <Text style={styles.sectionLabel}>{sectionLabel}</Text>
+          ) : null
+        }
+        renderItem={({ item }) => (
+          <TouchableOpacity
+            style={styles.resultRow}
+            onPress={() => handleSelect(item)}
+            activeOpacity={0.75}
+          >
+            <View style={styles.resultIcon}>
               <MaterialIcons
-                name="location-off"
-                size={60}
-                color={theme.colors.border}
+                name={showRecent ? "history" : "place"}
+                size={18}
+                color={showRecent ? "#8A95A3" : "#FF5A5F"}
               />
-              <Text style={styles.emptyTitle}>No Saved Addresses</Text>
-              <Text style={styles.emptySubtitle}>
-                Use your current location or manually search for a place to get
-                started.
+            </View>
+            <View style={styles.resultText}>
+              <Text style={styles.resultMain} numberOfLines={1}>
+                {item.mainText}
+              </Text>
+              <Text style={styles.resultSub} numberOfLines={1}>
+                {item.subText}
               </Text>
             </View>
-          )}
-        </ScrollView>
-      </View>
-    </SafeAreaView>
+            <MaterialIcons name="north-west" size={15} color="#D0D5DD" />
+          </TouchableOpacity>
+        )}
+        ItemSeparatorComponent={() => <View style={styles.separator} />}
+      />
+    </View>
   );
 }
 
-// --- Stylesheet for Professional UI ---
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: theme.colors.background,
-  },
-  container: {
-    flex: 1,
-    backgroundColor: theme.colors.background,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: theme.spacing.lg,
-    paddingVertical: theme.spacing.md,
-    backgroundColor: "#F8F8F8",
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-  },
-  backButton: {
-    padding: theme.spacing.xs,
-  },
-  headerTitle: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: "700",
-    color: theme.colors.text,
-  },
-  // Modern Floating Search Card
-  searchContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginHorizontal: theme.spacing.lg,
-    marginTop: theme.spacing.md,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    backgroundColor: "#FFFFFF",
-    borderRadius: theme.borderRadius.lg,
-    gap: theme.spacing.sm,
+  container: { flex: 1, backgroundColor: "#F5F6F8" },
 
-    ...theme.shadows.md,
+  header: { paddingHorizontal: 16, paddingBottom: 0, overflow: "hidden" },
+
+  orb1: {
+    position: "absolute",
+    width: 130,
+    height: 130,
+    borderRadius: 65,
+    backgroundColor: "rgba(255,90,95,0.15)",
+    top: -30,
+    right: -10,
+  },
+  orb2: {
+    position: "absolute",
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "rgba(255,159,67,0.1)",
+    top: 20,
+    right: 80,
+  },
+
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 14,
+  },
+  backBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  headerCenter: { flex: 1, alignItems: "center" },
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: "800",
+    color: "#FFF",
+  },
+  headerSub: {
+    fontSize: 11,
+    color: "rgba(255,255,255,0.55)",
+    marginTop: 2,
+  },
+
+  searchWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.2)",
+    paddingHorizontal: 14,
+    height: 46,
+    marginBottom: 14,
+  },
+  searchWrapFocused: {
+    backgroundColor: "#FFF",
+    borderColor: "#FF5A5F",
   },
   searchInput: {
     flex: 1,
-    fontSize: theme.fontSize.md,
-    color: theme.colors.text,
-    paddingVertical: theme.spacing.xs,
+    fontSize: 14,
+    color: "#0F1B2D",
+    paddingVertical: 0,
   },
-  scrollContent: {
-    paddingBottom: theme.spacing.xxl,
-    paddingHorizontal: theme.spacing.lg, // Container padding for main content
-  },
-  cardSection: {
-    marginTop: theme.spacing.lg,
-    padding: theme.spacing.md,
-    backgroundColor: "#FFFFFF",
-    borderRadius: theme.borderRadius.lg,
-    ...theme.shadows.sm, // Subtle elevation for content blocks
-  },
-  sectionHeaderTitle: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: "700",
-    color: theme.colors.textSecondary,
-    marginBottom: theme.spacing.md,
-    paddingHorizontal: theme.spacing.sm,
-  },
-  // Current Location
-  currentLocationButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: theme.spacing.sm,
-    paddingVertical: theme.spacing.md,
-    borderRadius: theme.borderRadius.md,
-    gap: theme.spacing.md,
-  },
-  currentLocationIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: `${theme.colors.primary}10`,
+  clearBtn: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#EEF0F4",
     justifyContent: "center",
     alignItems: "center",
-  },
-  currentLocationText: {
-    flex: 1,
-  },
-  currentLocationTitle: {
-    fontSize: theme.fontSize.md,
-    fontWeight: "600",
-    color: theme.colors.text,
-  },
-  currentLocationSubtitle: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textSecondary,
-    marginTop: 2,
-  },
-  // Saved Addresses
-  addressCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: theme.spacing.sm,
-    paddingVertical: theme.spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-    gap: theme.spacing.md,
-  },
-  selectedAddressCard: {
-    backgroundColor: `${theme.colors.primary}05`,
-    borderRadius: theme.borderRadius.md,
-  },
-  addressIconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: theme.colors.surface,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  addressInfo: {
-    flex: 1,
-  },
-  addressLabel: {
-    fontSize: theme.fontSize.md,
-    fontWeight: "600",
-    color: theme.colors.text,
-    marginBottom: 2,
-  },
-  addressText: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textSecondary,
-  },
-  activeIndicator: {
-    marginLeft: theme.spacing.sm,
   },
 
-  emptyState: {
+  accentBar: { flexDirection: "row", height: 3 },
+  accentSeg: { flex: 1 },
+
+  gpsRow: {
+    flexDirection: "row",
     alignItems: "center",
-    marginTop: theme.spacing.xxl,
-    padding: theme.spacing.xl,
-    backgroundColor: "#FFFFFF",
-    borderRadius: theme.borderRadius.lg,
-    ...theme.shadows.sm,
+    gap: 12,
+    backgroundColor: "#FFF",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
-  emptyTitle: {
-    fontSize: theme.fontSize.md,
-    fontWeight: "600",
-    color: theme.colors.text,
-    marginTop: theme.spacing.md,
-    textAlign: "center",
+  gpsIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    justifyContent: "center",
+    alignItems: "center",
   },
-  emptySubtitle: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textSecondary,
-    textAlign: "center",
-    marginTop: 4,
+  gpsTextWrap: { flex: 1 },
+  gpsTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#0F1B2D",
   },
+  gpsSub: {
+    fontSize: 12,
+    color: "#8A95A3",
+    marginTop: 1,
+  },
+  listDivider: { height: 1, backgroundColor: "#EEF0F4" },
+
+  listContent: { paddingHorizontal: 16, paddingTop: 16 },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#8A95A3",
+    letterSpacing: 0.8,
+    marginBottom: 10,
+  },
+
+  resultRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "#FFF",
+    padding: 14,
+    borderRadius: 14,
+  },
+  resultIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 11,
+    backgroundColor: "#F5F6F8",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  resultText: { flex: 1 },
+  resultMain: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#0F1B2D",
+  },
+  resultSub: {
+    fontSize: 12,
+    color: "#8A95A3",
+    marginTop: 2,
+  },
+  separator: { height: 6 },
 });

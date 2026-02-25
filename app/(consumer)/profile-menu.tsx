@@ -8,25 +8,41 @@ import {
   Animated,
   Dimensions,
   Alert,
-  Image, 
+  Image,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { MaterialIcons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { useAuth } from "../../contexts/AuthContext";
-import { theme } from "../../constants/theme";
 
-const { width, height } = Dimensions.get("window");
+const { width } = Dimensions.get("window");
 const DRAWER_WIDTH = width * 0.85;
+
+// ── Warm amber/orange palette matching the reference profile page ──
+const C = {
+  headerBg: "#fff2e1", // warm beige header (same as reference)
+  accent: "#ff7f2a", // primary orange
+  accentSoft: "#f49b33", // softer amber
+  accentBg: "#fff2e1", // tinted item background
+  accentBorder: "#ffd7b0", // warm border
+  white: "#FFFFFF",
+  bg: "#f8f9fb", // page background
+  card: "#FFFFFF",
+  text: "#222222",
+  textSub: "#666666",
+  textMuted: "#999999",
+  divider: "#f2f2f2",
+  error: "#ff4b4b",
+  errorBg: "#fff0f0",
+};
 
 export default function ProfileMenu() {
   const router = useRouter();
-  // Assuming updateUserProfile exists in useAuth for role switching
   const { userData, logout, updateUserProfile } = useAuth();
   const slideAnim = useRef(new Animated.Value(width)).current;
   const overlayAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Slide in animation
     Animated.parallel([
       Animated.spring(slideAnim, {
         toValue: 0,
@@ -55,18 +71,13 @@ export default function ProfileMenu() {
         useNativeDriver: true,
       }),
     ]).start(() => {
-      if (callback) {
-        callback();
-      } else {
-        router.replace("/(consumer)/explore");
-      }
+      if (callback) callback();
+      else router.replace("/(consumer)/explore");
     });
   };
 
   const navigateAndClose = (path: string) => {
-    closeDrawer(() => {
-      setTimeout(() => router.push(path), 300);
-    });
+    closeDrawer(() => setTimeout(() => router.push(path), 300));
   };
 
   const handleLogout = () => {
@@ -86,44 +97,30 @@ export default function ProfileMenu() {
   const handleRoleSwitch = () => {
     const newRole =
       userData?.rolePreference === "consumer" ? "owner" : "consumer";
-
-    Alert.alert(
-      "Switch Role",
-      `Are you sure you want to switch to the ${newRole.toUpperCase()} role?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Switch",
-          style: "default",
-          onPress: async () => {
-            closeDrawer();
-
-            if (updateUserProfile) {
-              await updateUserProfile({ rolePreference: newRole });
-            }
-
-            const path =
-              newRole === "owner"
-                ? "/(owner)/my-restaurants"
-                : "/(consumer)/explore";
-            setTimeout(() => router.replace(path), 300);
-          },
+    Alert.alert("Switch Role", `Switch to ${newRole.toUpperCase()} role?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Switch",
+        onPress: async () => {
+          closeDrawer();
+          if (updateUserProfile)
+            await updateUserProfile({ rolePreference: newRole });
+          const path =
+            newRole === "owner"
+              ? "/(owner)/my-restaurants"
+              : "/(consumer)/explore";
+          setTimeout(() => router.replace(path), 300);
         },
-      ]
-    );
+      },
+    ]);
   };
+
+  const initials = userData?.fullName?.charAt(0).toUpperCase() || "U";
 
   return (
     <View style={styles.container}>
       {/* Overlay */}
-      <Animated.View
-        style={[
-          styles.overlay,
-          {
-            opacity: overlayAnim,
-          },
-        ]}
-      >
+      <Animated.View style={[styles.overlay, { opacity: overlayAnim }]}>
         <TouchableOpacity
           style={StyleSheet.absoluteFill}
           activeOpacity={1}
@@ -133,87 +130,119 @@ export default function ProfileMenu() {
 
       {/* Drawer */}
       <Animated.View
-        style={[
-          styles.drawer,
-          {
-            transform: [{ translateX: slideAnim }],
-          },
-        ]}
+        style={[styles.drawer, { transform: [{ translateX: slideAnim }] }]}
       >
-        <ScrollView
-          style={styles.drawerContent}
-          showsVerticalScrollIndicator={false}
-          bounces={false}
-        >
-          {/* Profile Header */}
-          <View style={styles.profileHeader}>
-            <View style={styles.profileImageContainer}>
+        <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
+          {/* ── Profile Header — warm beige like reference ── */}
+          <LinearGradient
+            colors={["#fff2e1", "#fde8c8", "#fff2e1"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.profileHeader}
+          >
+            {/* Avatar */}
+            <View style={styles.avatarWrap}>
               {userData?.profileImage ? (
                 <Image
                   source={{ uri: userData.profileImage }}
-                  style={styles.profileImage}
+                  style={styles.avatarImage}
                 />
               ) : (
-                <View style={styles.profileIconPlaceholder}>
-                  <Text style={styles.profileInitials}>
-                    {userData?.fullName?.charAt(0).toUpperCase() || "U"}
-                  </Text>
-                </View>
+                <LinearGradient
+                  colors={["#ff7f2a", "#f49b33"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.avatarPlaceholder}
+                >
+                  <Text style={styles.avatarInitials}>{initials}</Text>
+                </LinearGradient>
               )}
+              {/* Online dot */}
+              <View style={styles.onlineDot} />
             </View>
-            <Text style={styles.userName}>{userData?.fullName}</Text>
-            <Text style={styles.userEmail}>{userData?.email}</Text>
+
+            <Text style={styles.userName}>{userData?.fullName || "Guest"}</Text>
+            <Text style={styles.userEmail}>{userData?.email || ""}</Text>
+
+            {/* View Profile pill — same style as reference's helpButton */}
             <TouchableOpacity
-              style={styles.viewProfileButton}
+              style={styles.viewProfileBtn}
               onPress={() => navigateAndClose("/(consumer)/profile")}
+              activeOpacity={0.8}
             >
               <Text style={styles.viewProfileText}>View Profile</Text>
-              <MaterialIcons
-                name="arrow-forward"
-                size={16}
-                color={theme.colors.primary}
-              />
+              <MaterialIcons name="arrow-forward" size={14} color={C.accent} />
             </TouchableOpacity>
+          </LinearGradient>
+
+          {/* ── Quick Grid — like reference QuickItems ── */}
+          <View style={styles.quickGrid}>
+            {[
+              {
+                icon: "event",
+                label: "My Bookings",
+                path: "/(consumer)/bookings",
+              },
+              { icon: "favorite-border", label: "Favourites", path: "" },
+              {
+                icon: "location-on",
+                label: "Addresses",
+                path: "/(consumer)/location-selector",
+              },
+              { icon: "payment", label: "Payments", path: "" },
+            ].map((item) => (
+              <TouchableOpacity
+                key={item.label}
+                style={styles.quickItem}
+                activeOpacity={0.75}
+                onPress={() =>
+                  item.path ? navigateAndClose(item.path) : undefined
+                }
+              >
+                <View style={styles.quickIconWrap}>
+                  <MaterialIcons
+                    name={item.icon as any}
+                    size={20}
+                    color={C.accent}
+                  />
+                </View>
+                <Text style={styles.quickLabel}>{item.label}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
 
-          {/* Menu Items */}
+          <View style={styles.sectionDivider} />
+
+          {/* ── Main Menu Options — same style as reference ProfileOption ── */}
           <View style={styles.menuSection}>
-            <DrawerMenuItem
+            <MenuItem
               icon="event"
-              title="My Bookings"
+              label="My Bookings"
               onPress={() => navigateAndClose("/(consumer)/bookings")}
             />
-
-            <DrawerMenuItem
+            <MenuItem
               icon="favorite-border"
-              title="Favorites"
-              badge={0}
-              onPress={() => {
-                // TODO
-              }}
+              label="Favorites"
+              onPress={() => {}}
             />
-
-            <DrawerMenuItem
+            <MenuItem
               icon="location-on"
-              title="Saved Addresses"
+              label="Saved Addresses"
               onPress={() => navigateAndClose("/(consumer)/location-selector")}
             />
-
-            <DrawerMenuItem
+            <MenuItem
               icon="payment"
-              title="Payment Methods"
-              onPress={() => {
-                // TODO
-              }}
+              label="Payment Methods"
+              onPress={() => {}}
             />
 
             {(userData?.rolePreference === "owner" ||
               userData?.rolePreference === "both") && (
               <>
-                <View style={styles.divider} />
-                <DrawerMenuItem
+                <View style={styles.itemDivider} />
+                <MenuItem
                   icon="store"
-                  title="My Restaurants"
+                  label="My Restaurants"
                   highlight
                   onPress={() => navigateAndClose("/(owner)/my-restaurants")}
                 />
@@ -221,64 +250,67 @@ export default function ProfileMenu() {
             )}
           </View>
 
-          {/* Settings Section */}
+          <View style={styles.sectionDivider} />
+
+          {/* ── Preferences Section ── */}
           <View style={styles.menuSection}>
-            <Text style={styles.sectionTitle}>PREFERENCES</Text>
-
-            <DrawerMenuItem
+            <Text style={styles.sectionLabel}>PREFERENCES</Text>
+            <MenuItem
               icon="notifications-none"
-              title="Notifications"
-              onPress={() => {
-                // TODO
-              }}
+              label="Notifications"
+              onPress={() => {}}
             />
-
-            <DrawerMenuItem
+            <MenuItem
               icon="help-outline"
-              title="Help & Support"
-              onPress={() => {
-                // TODO
-              }}
+              label="Help & Support"
+              onPress={() => {}}
             />
-
-            <DrawerMenuItem
+            <MenuItem
               icon="info-outline"
-              title="About"
+              label="About"
               subtitle="Version 1.0.0"
-              onPress={() => {
-                // TODO
-              }}
+              onPress={() => {}}
             />
           </View>
 
-          {/* Role Switch Banner */}
+          <View style={styles.sectionDivider} />
+
+          {/* ── Role Switch Banner — styled like reference membership banner ── */}
           {userData?.rolePreference === "consumer" && (
-            <View style={styles.roleSwitchBanner}>
-              <MaterialIcons
-                name="store"
-                size={32}
-                color={theme.colors.primary}
-              />
-              <View style={styles.roleSwitchText}>
-                <Text style={styles.roleSwitchTitle}>List Your Restaurant</Text>
-                <Text style={styles.roleSwitchSubtitle}>
-                  Start receiving bookings from customers
-                </Text>
+            <View style={styles.roleBanner}>
+              <View style={styles.roleBannerTop}>
+                <View style={styles.joinNowBadge}>
+                  <Text style={styles.joinNowText}>FOR OWNERS</Text>
+                </View>
               </View>
+              <Text style={styles.roleBannerTitle}>List Your Restaurant</Text>
+              <Text style={styles.roleBannerSub}>
+                Start receiving bookings from customers today 🍽️
+              </Text>
               <TouchableOpacity
-                style={styles.roleSwitchButton}
+                style={styles.roleSwitchBtn}
                 onPress={handleRoleSwitch}
+                activeOpacity={0.85}
               >
-                <Text style={styles.roleSwitchButtonText}>Switch</Text>
+                <MaterialIcons name="store" size={16} color={C.white} />
+                <Text style={styles.roleSwitchBtnText}>Switch to Owner</Text>
               </TouchableOpacity>
             </View>
           )}
-          {/* Logout */}
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <MaterialIcons name="logout" size={20} color={theme.colors.error} />
+
+          {/* ── Logout — same style as reference ── */}
+          <TouchableOpacity
+            style={styles.logoutBtn}
+            onPress={handleLogout}
+            activeOpacity={0.8}
+          >
+            <MaterialIcons name="logout" size={20} color={C.error} />
             <Text style={styles.logoutText}>Logout</Text>
           </TouchableOpacity>
 
+          <Text style={styles.footer}>
+            © 2025 Dine Time. All Rights Reserved.
+          </Text>
           <View style={{ height: 40 }} />
         </ScrollView>
       </Animated.View>
@@ -286,17 +318,17 @@ export default function ProfileMenu() {
   );
 }
 
-// Drawer Menu Item Component
-const DrawerMenuItem = ({
+// ── Menu Item — mirrors reference ProfileOption ──
+const MenuItem = ({
   icon,
-  title,
+  label,
   subtitle,
   badge,
   highlight = false,
   onPress,
 }: {
   icon: any;
-  title: string;
+  label: string;
   subtitle?: string;
   badge?: number;
   highlight?: boolean;
@@ -307,149 +339,235 @@ const DrawerMenuItem = ({
     onPress={onPress}
     activeOpacity={0.7}
   >
-    <MaterialIcons
-      name={icon}
-      size={24}
-      color={highlight ? theme.colors.primary : theme.colors.text}
-    />
+    <View
+      style={[styles.menuIconWrap, highlight && styles.menuIconWrapHighlight]}
+    >
+      <MaterialIcons
+        name={icon}
+        size={20}
+        color={highlight ? C.accent : C.accentSoft}
+      />
+    </View>
     <View style={styles.menuItemContent}>
       <Text
         style={[
-          styles.menuItemTitle,
-          highlight && styles.menuItemTitleHighlight,
+          styles.menuItemLabel,
+          highlight && styles.menuItemLabelHighlight,
         ]}
       >
-        {title}
+        {label}
       </Text>
-      {subtitle && <Text style={styles.menuItemSubtitle}>{subtitle}</Text>}
+      {subtitle && <Text style={styles.menuItemSub}>{subtitle}</Text>}
     </View>
     {badge !== undefined && badge > 0 && (
       <View style={styles.badge}>
         <Text style={styles.badgeText}>{badge}</Text>
       </View>
     )}
-    <MaterialIcons
-      name="chevron-right"
-      size={20}
-      color={theme.colors.textSecondary}
-    />
+    <MaterialIcons name="chevron-right" size={20} color={C.textMuted} />
   </TouchableOpacity>
 );
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
+
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0, 0, 0, 0.6)",
+    backgroundColor: "rgba(0,0,0,0.5)",
   },
+
+  // ── Drawer ──
   drawer: {
     position: "absolute",
     right: 0,
     top: 0,
     bottom: 0,
     width: DRAWER_WIDTH,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: C.bg,
     shadowColor: "#000",
-    shadowOffset: { width: -2, height: 0 },
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    elevation: 10,
+    shadowOffset: { width: -3, height: 0 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 12,
   },
-  drawerContent: {
-    flex: 1,
-  },
+
+  // ── Profile Header ──
   profileHeader: {
     paddingTop: 60,
-    paddingBottom: theme.spacing.xl,
-    paddingHorizontal: theme.spacing.xl,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    paddingBottom: 24,
+    paddingHorizontal: 20,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
     alignItems: "center",
   },
-  profileImageContainer: {
-    marginBottom: theme.spacing.lg,
+  avatarWrap: {
+    marginBottom: 14,
+    position: "relative",
   },
-  profileImage: {
+  avatarImage: {
     width: 80,
     height: 80,
     borderRadius: 40,
+    borderWidth: 3,
+    borderColor: C.white,
   },
-  profileIconPlaceholder: {
+  avatarPlaceholder: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: theme.colors.primary,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 3,
+    borderColor: C.white,
+  },
+  avatarInitials: {
+    fontSize: 32,
+    fontWeight: "800",
+    color: C.white,
+  },
+  onlineDot: {
+    position: "absolute",
+    bottom: 3,
+    right: 3,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: "#22c55e",
+    borderWidth: 2,
+    borderColor: C.white,
+  },
+  userName: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#222",
+    marginBottom: 3,
+  },
+  userEmail: {
+    fontSize: 13,
+    color: C.textSub,
+    marginBottom: 14,
+  },
+  viewProfileBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: C.white,
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: C.accent,
+  },
+  viewProfileText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: C.accent,
+  },
+
+  // ── Quick Grid ──
+  quickGrid: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    paddingVertical: 18,
+    paddingHorizontal: 10,
+    backgroundColor: C.white,
+    marginTop: 10,
+    marginHorizontal: 12,
+    borderRadius: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  quickItem: { alignItems: "center", gap: 6 },
+  quickIconWrap: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: C.accentBg,
+    borderWidth: 1,
+    borderColor: C.accentBorder,
     justifyContent: "center",
     alignItems: "center",
   },
-  profileInitials: {
-    fontSize: 32,
-    fontWeight: "bold",
-    color: "#FFFFFF",
+  quickLabel: {
+    fontSize: 11,
+    color: C.text,
+    fontWeight: "500",
+    textAlign: "center",
   },
-  userName: {
-    fontSize: theme.fontSize.xl,
-    fontWeight: "bold",
-    color: theme.colors.text,
-    marginBottom: 4,
+
+  // ── Section separators ──
+  sectionDivider: {
+    height: 8,
+    backgroundColor: C.bg,
   },
-  userEmail: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textSecondary,
-    marginBottom: theme.spacing.md,
+  itemDivider: {
+    height: 1,
+    backgroundColor: C.divider,
+    marginHorizontal: 18,
+    marginVertical: 4,
   },
-  viewProfileButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  viewProfileText: {
-    fontSize: theme.fontSize.sm,
-    fontWeight: "600",
-    color: theme.colors.primary,
-  },
+
+  // ── Menu section ──
   menuSection: {
-    paddingVertical: theme.spacing.md,
+    backgroundColor: C.white,
+    paddingVertical: 6,
   },
-  sectionTitle: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: "700",
-    color: theme.colors.textSecondary,
-    paddingHorizontal: theme.spacing.xl,
-    marginTop: theme.spacing.md,
-    marginBottom: theme.spacing.sm,
+  sectionLabel: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: C.textMuted,
+    letterSpacing: 1.2,
+    paddingHorizontal: 18,
+    paddingTop: 10,
+    paddingBottom: 6,
   },
+
+  // ── Menu item ──
   menuItem: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: theme.spacing.md,
-    paddingHorizontal: theme.spacing.xl,
-    gap: theme.spacing.md,
+    paddingVertical: 13,
+    paddingHorizontal: 18,
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: C.divider,
   },
   menuItemHighlight: {
-    backgroundColor: `${theme.colors.primary}08`,
+    backgroundColor: C.accentBg,
   },
-  menuItemContent: {
-    flex: 1,
+  menuIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: "rgba(244,155,51,0.1)",
+    justifyContent: "center",
+    alignItems: "center",
   },
-  menuItemTitle: {
-    fontSize: theme.fontSize.md,
+  menuIconWrapHighlight: {
+    backgroundColor: C.accentBg,
+    borderWidth: 1,
+    borderColor: C.accentBorder,
+  },
+  menuItemContent: { flex: 1 },
+  menuItemLabel: {
+    fontSize: 14,
     fontWeight: "500",
-    color: theme.colors.text,
+    color: C.text,
   },
-  menuItemTitleHighlight: {
-    color: theme.colors.primary,
-    fontWeight: "600",
+  menuItemLabelHighlight: {
+    color: C.accent,
+    fontWeight: "700",
   },
-  menuItemSubtitle: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.textSecondary,
+  menuItemSub: {
+    fontSize: 11,
+    color: C.textMuted,
     marginTop: 2,
   },
   badge: {
-    backgroundColor: theme.colors.primary,
+    backgroundColor: C.accent,
     borderRadius: 10,
     paddingHorizontal: 8,
     paddingVertical: 2,
@@ -457,84 +575,92 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   badgeText: {
-    fontSize: theme.fontSize.xs,
+    fontSize: 11,
     fontWeight: "700",
-    color: "#FFFFFF",
+    color: C.white,
   },
-  divider: {
-    height: 1,
-    backgroundColor: theme.colors.border,
-    marginVertical: theme.spacing.sm,
-  },
-  roleSwitchBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginHorizontal: theme.spacing.lg,
-    marginVertical: theme.spacing.lg,
-    padding: theme.spacing.lg,
-    backgroundColor: `${theme.colors.primary}15`,
-    borderRadius: theme.borderRadius.lg,
-    gap: theme.spacing.md,
+
+  // ── Role Switch Banner — mirrors reference membership banner ──
+  roleBanner: {
+    backgroundColor: C.white,
+    marginHorizontal: 12,
+    marginTop: 10,
+    borderRadius: 16,
+    padding: 16,
     borderWidth: 1,
-    borderColor: `${theme.colors.primary}30`,
+    borderColor: C.accentBorder,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  roleSwitchText: {
-    flex: 1,
+  roleBannerTop: { marginBottom: 8 },
+  joinNowBadge: {
+    backgroundColor: C.accent,
+    alignSelf: "flex-start",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
-  roleSwitchTitle: {
-    fontSize: theme.fontSize.md,
+  joinNowText: {
+    color: C.white,
     fontWeight: "700",
-    color: theme.colors.text,
+    fontSize: 10,
+    letterSpacing: 0.5,
+  },
+  roleBannerTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: C.text,
     marginBottom: 4,
   },
-  roleSwitchSubtitle: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.textSecondary,
-    lineHeight: 16,
+  roleBannerSub: {
+    fontSize: 12,
+    color: C.textSub,
+    marginBottom: 14,
+    lineHeight: 18,
   },
-  roleSwitchButton: {
-    backgroundColor: theme.colors.primary,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    borderRadius: theme.borderRadius.md,
-  },
-  roleSwitchButtonText: {
-    fontSize: theme.fontSize.sm,
-    fontWeight: "600",
-    color: "#FFFFFF",
-  },
-  logoutButton: {
+  roleSwitchBtn: {
     flexDirection: "row",
-    alignItems: "center", // <-- FIX APPLIED HERE: corrected typo from 'aligntems'
-    justifyContent: "center",
-    marginHorizontal: theme.spacing.xl,
-    paddingVertical: theme.spacing.md,
-    borderRadius: theme.borderRadius.md,
-    backgroundColor: `${theme.colors.error}15`,
-    gap: theme.spacing.sm,
-    marginTop: theme.spacing.lg,
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: C.accent,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignSelf: "flex-start",
   },
-  logoutText: {
-    fontSize: theme.fontSize.md,
-    fontWeight: "600",
-    color: theme.colors.error,
+  roleSwitchBtnText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: C.white,
   },
-  devButton: {
+
+  // ── Logout ──
+  logoutBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    marginHorizontal: theme.spacing.xl,
-    paddingVertical: theme.spacing.md,
-    borderRadius: theme.borderRadius.md,
-    backgroundColor: "rgba(255, 107, 0, 0.1)",
-    gap: theme.spacing.sm,
-    marginTop: theme.spacing.md,
+    marginHorizontal: 18,
+    marginTop: 16,
+    paddingVertical: 13,
+    borderRadius: 12,
+    backgroundColor: C.errorBg,
+    gap: 8,
     borderWidth: 1,
-    borderColor: "rgba(255, 107, 0, 0.3)",
+    borderColor: "rgba(255,75,75,0.15)",
   },
-  devButtonText: {
-    fontSize: theme.fontSize.sm,
-    fontWeight: "600",
-    color: "#FF6B00",
+  logoutText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: C.error,
+  },
+
+  footer: {
+    fontSize: 11,
+    color: C.textMuted,
+    textAlign: "center",
+    marginTop: 20,
   },
 });

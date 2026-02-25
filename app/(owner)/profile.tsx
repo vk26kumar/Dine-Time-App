@@ -5,15 +5,41 @@ import {
   StyleSheet,
   TouchableOpacity,
   Alert,
+  ScrollView,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { MaterialIcons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { useAuth } from "../../contexts/AuthContext";
-import { theme } from "../../constants/theme";
+
+const MENU_ITEMS = [
+  {
+    icon: "restaurant-menu",
+    label: "Book as Consumer",
+    sub: "Switch to booking mode",
+    action: "switch",
+  },
+  {
+    icon: "settings",
+    label: "Settings",
+    sub: "App preferences",
+    action: "settings",
+  },
+  {
+    icon: "help-outline",
+    label: "Help & Support",
+    sub: "Get assistance",
+    action: "help",
+  },
+];
+
 export default function OwnerProfileScreen() {
   const router = useRouter();
   const { userData, logout, updateUserProfile } = useAuth();
+  const insets = useSafeAreaInsets();
+
+  const initials = userData?.fullName?.charAt(0).toUpperCase() || "O";
 
   const handleLogout = () => {
     Alert.alert("Logout", "Are you sure you want to logout?", [
@@ -32,7 +58,7 @@ export default function OwnerProfileScreen() {
   const handleSwitchToConsumer = () => {
     Alert.alert(
       "Switch to Consumer",
-      "Do you want to switch to consumer mode to book restaurants? This will change your primary app view.",
+      "Switch to consumer mode to book restaurants?",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -40,181 +66,252 @@ export default function OwnerProfileScreen() {
           onPress: async () => {
             try {
               if (updateUserProfile) {
-                const newRole =
-                  userData?.rolePreference === "both" ? "both" : "consumer";
-                await updateUserProfile({ rolePreference: newRole });
+                await updateUserProfile({
+                  rolePreference:
+                    userData?.rolePreference === "both" ? "both" : "consumer",
+                });
               }
               router.replace("/(consumer)/explore");
-            } catch (error) {
-              console.error("Error switching role:", error);
-              Alert.alert("Error", "Failed to switch role view.");
+            } catch {
+              Alert.alert("Error", "Failed to switch role.");
             }
           },
         },
-      ]
+      ],
     );
   };
+
+  const handleAction = (action: string) => {
+    if (action === "switch") handleSwitchToConsumer();
+  };
+
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Profile</Text>
-      </View>
+    <View style={styles.container}>
+      {/* Header */}
+      <LinearGradient
+        colors={["#1A0A2E", "#3D1A6E", "#6B2FA0"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[styles.header, { paddingTop: insets.top + 14 }]}
+      >
+        <View style={styles.headerOrb1} />
+        <View style={styles.headerOrb2} />
 
-      <View style={styles.content}>
-        <View style={styles.profileCard}>
-          <View style={styles.avatarContainer}>
-            <MaterialIcons
-              name="person"
-              size={48}
-              color={theme.colors.primary}
-            />
+        <View style={styles.headerTopRow}>
+          <Text style={styles.headerTitle}>My Profile</Text>
+          <View style={styles.ownerBadge}>
+            <MaterialIcons name="store" size={11} color="#FF9F43" />
+            <Text style={styles.ownerBadgeText}>Owner</Text>
           </View>
-          <Text style={styles.name}>{userData?.fullName}</Text>
-          <Text style={styles.email}>{userData?.email}</Text>
-          <Text style={styles.phone}>{userData?.phoneNumber}</Text>
         </View>
 
-        <View style={styles.menuSection}>
-          <MenuItem
-            icon="restaurant-menu"
-            title="Book as Consumer"
-            subtitle="Switch to booking mode"
-            onPress={handleSwitchToConsumer}
-          />
-          <MenuItem
-            icon="settings"
-            title="Settings"
-            subtitle="App preferences"
-            onPress={() => {}}
-          />
-          <MenuItem
-            icon="help"
-            title="Help & Support"
-            subtitle="Get assistance"
-            onPress={() => {}}
-          />
+        {/* Avatar */}
+        <View style={styles.avatarSection}>
+          <LinearGradient colors={["#FF5A5F", "#FF9F43"]} style={styles.avatar}>
+            <Text style={styles.avatarText}>{initials}</Text>
+          </LinearGradient>
+          <Text style={styles.userName}>
+            {userData?.fullName || "Restaurant Owner"}
+          </Text>
+          <Text style={styles.userEmail}>{userData?.email || ""}</Text>
+          {userData?.phoneNumber ? (
+            <Text style={styles.userPhone}>{userData.phoneNumber}</Text>
+          ) : null}
         </View>
 
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <MaterialIcons name="logout" size={20} color={theme.colors.error} />
-          <Text style={styles.logoutText}>Logout</Text>
+        <View style={styles.accentBar}>
+          <View style={[styles.accentSeg, { backgroundColor: "#FF5A5F" }]} />
+          <View style={[styles.accentSeg, { backgroundColor: "#FF9F43" }]} />
+          <View style={[styles.accentSeg, { backgroundColor: "#A855F7" }]} />
+        </View>
+      </LinearGradient>
+
+      <ScrollView
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingBottom: insets.bottom + 24 },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Menu */}
+        <View style={styles.card}>
+          {MENU_ITEMS.map((item, i) => (
+            <TouchableOpacity
+              key={item.action}
+              style={[
+                styles.menuItem,
+                i < MENU_ITEMS.length - 1 && styles.menuItemBorder,
+              ]}
+              onPress={() => handleAction(item.action)}
+              activeOpacity={0.75}
+            >
+              <View style={styles.menuIconWrap}>
+                <MaterialIcons
+                  name={item.icon as any}
+                  size={18}
+                  color="#FF5A5F"
+                />
+              </View>
+              <View style={styles.menuContent}>
+                <Text style={styles.menuLabel}>{item.label}</Text>
+                <Text style={styles.menuSub}>{item.sub}</Text>
+              </View>
+              <MaterialIcons name="chevron-right" size={20} color="#C4CAD4" />
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Logout */}
+        <TouchableOpacity
+          onPress={handleLogout}
+          activeOpacity={0.85}
+          style={styles.logoutWrap}
+        >
+          <View style={styles.logoutBtn}>
+            <MaterialIcons name="logout" size={18} color="#EF4444" />
+            <Text style={styles.logoutText}>Logout</Text>
+          </View>
         </TouchableOpacity>
-      </View>
-    </SafeAreaView>
+
+        <Text style={styles.footer}>
+          © 2025 Dine Time. All Rights Reserved.
+        </Text>
+      </ScrollView>
+    </View>
   );
 }
 
-const MenuItem = ({
-  icon,
-  title,
-  subtitle,
-  onPress,
-}: {
-  icon: any;
-  title: string;
-  subtitle: string;
-  onPress: () => void;
-}) => (
-  <TouchableOpacity style={styles.menuItem} onPress={onPress}>
-    <MaterialIcons name={icon} size={24} color={theme.colors.text} />
-    <View style={styles.menuItemText}>
-      <Text style={styles.menuItemTitle}>{title}</Text>
-      <Text style={styles.menuItemSubtitle}>{subtitle}</Text>
-    </View>
-    <MaterialIcons
-      name="chevron-right"
-      size={24}
-      color={theme.colors.textSecondary}
-    />
-  </TouchableOpacity>
-);
-
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#FFFFFF",
-  },
+  container: { flex: 1, backgroundColor: "#F5F6F8" },
+
   header: {
-    padding: theme.spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    overflow: "hidden",
+    paddingHorizontal: 20,
+    shadowColor: "#6B2FA0",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  headerOrb1: {
+    position: "absolute",
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    backgroundColor: "rgba(255,90,95,0.18)",
+    top: -40,
+    right: -20,
+  },
+  headerOrb2: {
+    position: "absolute",
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: "rgba(255,159,67,0.12)",
+    top: 30,
+    right: 80,
+  },
+  headerTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 20,
   },
   headerTitle: {
-    fontSize: theme.fontSize.xl,
-    fontWeight: "bold",
-    color: theme.colors.text,
+    fontSize: 22,
+    fontWeight: "900",
+    color: "#FFFFFF",
+    letterSpacing: -0.5,
   },
-  content: {
-    flex: 1,
-  },
-  profileCard: {
+  ownerBadge: {
+    flexDirection: "row",
     alignItems: "center",
-    padding: theme.spacing.xxl,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    gap: 5,
+    backgroundColor: "rgba(255,159,67,0.2)",
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255,159,67,0.3)",
   },
-  avatarContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: `${theme.colors.primary}15`,
+  ownerBadgeText: { fontSize: 11, fontWeight: "700", color: "#FF9F43" },
+
+  avatarSection: { alignItems: "center", marginBottom: 24 },
+  avatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 24,
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: theme.spacing.lg,
-    borderWidth: 3,
-    borderColor: theme.colors.primary,
+    marginBottom: 12,
+    shadowColor: "#FF5A5F",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
-  name: {
-    fontSize: theme.fontSize.xl,
-    fontWeight: "bold",
-    color: theme.colors.text,
-    marginBottom: theme.spacing.xs,
-  },
-  email: {
-    fontSize: theme.fontSize.md,
-    color: theme.colors.textSecondary,
+  avatarText: { fontSize: 32, fontWeight: "900", color: "#FFFFFF" },
+  userName: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    letterSpacing: -0.3,
     marginBottom: 4,
   },
-  phone: {
-    fontSize: theme.fontSize.md,
-    color: theme.colors.textSecondary,
-  },
-  menuSection: {
-    paddingVertical: theme.spacing.md,
+  userEmail: { fontSize: 13, color: "rgba(255,255,255,0.6)", marginBottom: 2 },
+  userPhone: { fontSize: 13, color: "rgba(255,255,255,0.5)" },
+
+  accentBar: { flexDirection: "row", height: 3 },
+  accentSeg: { flex: 1 },
+
+  scroll: { padding: 16 },
+
+  card: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#EEF0F4",
+    shadowColor: "#1A0A2E",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+    overflow: "hidden",
+    marginBottom: 12,
   },
   menuItem: {
     flexDirection: "row",
     alignItems: "center",
-    padding: theme.spacing.lg,
-    gap: theme.spacing.md,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
   },
-  menuItemText: {
-    flex: 1,
+  menuItemBorder: { borderBottomWidth: 1, borderBottomColor: "#EEF0F4" },
+  menuIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: "#FFF0F0",
+    justifyContent: "center",
+    alignItems: "center",
   },
-  menuItemTitle: {
-    fontSize: theme.fontSize.md,
-    fontWeight: "600",
-    color: theme.colors.text,
-    marginBottom: 2,
-  },
-  menuItemSubtitle: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textSecondary,
-  },
-  logoutButton: {
+  menuContent: { flex: 1 },
+  menuLabel: { fontSize: 14, fontWeight: "700", color: "#0F1B2D" },
+  menuSub: { fontSize: 11, color: "#8A95A3", marginTop: 2 },
+
+  logoutWrap: { marginBottom: 20 },
+  logoutBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    marginHorizontal: theme.spacing.xl,
-    paddingVertical: theme.spacing.md,
-    borderRadius: theme.borderRadius.md,
-    backgroundColor: `${theme.colors.error}15`,
-    gap: theme.spacing.sm,
-    marginTop: theme.spacing.lg,
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: "#FEF2F2",
+    borderWidth: 1,
+    borderColor: "#EF444420",
   },
-  logoutText: {
-    fontSize: theme.fontSize.md,
-    fontWeight: "600",
-    color: theme.colors.error,
-  },
+  logoutText: { fontSize: 14, fontWeight: "700", color: "#EF4444" },
+
+  footer: { fontSize: 11, color: "#C4CAD4", textAlign: "center" },
 });

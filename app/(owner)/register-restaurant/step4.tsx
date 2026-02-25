@@ -7,296 +7,363 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  StatusBar,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { MaterialIcons } from "@expo/vector-icons";
-import { theme } from "../../../constants/theme";
+import { LinearGradient } from "expo-linear-gradient";
+import { TableLocation } from "../../../types";
 
 interface Table {
   tableId: string;
   tableNumber: string;
   capacity: number;
-  location: "indoor" | "outdoor" | "private";
+  location: TableLocation;
 }
+
+const LOCATION_OPTIONS: {
+  value: TableLocation;
+  label: string;
+  icon: string;
+  color: string;
+}[] = [
+  { value: "indoor", label: "Indoor", icon: "meeting-room", color: "#6B2FA0" },
+  { value: "outdoor", label: "Outdoor", icon: "wb-sunny", color: "#FF9F43" },
+  { value: "private", label: "Private", icon: "lock", color: "#FF5A5F" },
+];
 
 export default function RegisterStep4() {
   const router = useRouter();
   const params = useLocalSearchParams();
+  const insets = useSafeAreaInsets();
 
   const [tables, setTables] = useState<Table[]>([]);
-  const [showAddTable, setShowAddTable] = useState(false);
+  const [showForm, setShowForm] = useState(false);
   const [tableNumber, setTableNumber] = useState("");
   const [capacity, setCapacity] = useState("2");
-  const [location, setLocation] = useState<"indoor" | "outdoor" | "private">(
-    "indoor"
-  );
+  const [location, setLocation] = useState<TableLocation>("indoor");
 
-  const handleAddTable = () => {
-    if (!tableNumber.trim()) {
-      Alert.alert("Error", "Please enter table number");
-      return;
-    }
-    if (!capacity || parseInt(capacity) < 1) {
-      Alert.alert("Error", "Please enter valid capacity");
-      return;
-    }
+  const totalCapacity = tables.reduce((s, t) => s + t.capacity, 0);
 
-    // Prevent duplicate table number
-    if (tables.some((t) => t.tableNumber === tableNumber.trim())) {
-      Alert.alert("Error", "Table number already exists");
-      return;
-    }
-
-    const newTable: Table = {
-      tableId: `T${Date.now()}`,
-      tableNumber: tableNumber.trim(),
-      capacity: parseInt(capacity),
-      location,
-    };
-
-    setTables([...tables, newTable]);
-    setShowAddTable(false);
+  const handleAdd = () => {
+    if (!tableNumber.trim())
+      return Alert.alert("Required", "Enter a table number");
+    const cap = parseInt(capacity);
+    if (!cap || cap < 1 || cap > 30)
+      return Alert.alert("Invalid", "Capacity must be between 1 and 30");
+    if (tables.some((t) => t.tableNumber === tableNumber.trim()))
+      return Alert.alert("Duplicate", "Table number already exists");
+    setTables((prev) => [
+      ...prev,
+      {
+        tableId: `T${Date.now()}`,
+        tableNumber: tableNumber.trim(),
+        capacity: cap,
+        location,
+      },
+    ]);
+    setShowForm(false);
     setTableNumber("");
     setCapacity("2");
     setLocation("indoor");
   };
 
-  const handleDeleteTable = (tableId: string) => {
-    Alert.alert("Delete Table", "Are you sure you want to delete this table?", [
+  const handleDelete = (id: string) => {
+    Alert.alert("Delete Table", "Remove this table?", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
         style: "destructive",
-        onPress: () => {
-          setTables(tables.filter((t) => t.tableId !== tableId));
-        },
+        onPress: () => setTables((t) => t.filter((x) => x.tableId !== id)),
       },
     ]);
   };
 
-  const getTotalCapacity = () => tables.reduce((sum, t) => sum + t.capacity, 0);
-
   const handleContinue = () => {
-    if (tables.length === 0) {
-      Alert.alert("Error", "Please add at least one table");
-      return;
-    }
-
+    if (tables.length === 0)
+      return Alert.alert("Required", "Add at least one table");
     router.push({
       pathname: "/(owner)/register-restaurant/step5",
       params: {
         ...params,
         tables: JSON.stringify(tables),
-        totalCapacity: getTotalCapacity().toString(),
+        totalCapacity: totalCapacity.toString(),
       },
     });
   };
 
+  const grouped = LOCATION_OPTIONS.map((opt) => ({
+    ...opt,
+    tables: tables.filter((t) => t.location === opt.value),
+  }));
+
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.backButton}
-        >
-          <MaterialIcons
-            name="arrow-back"
-            size={24}
-            color={theme.colors.text}
+    <SafeAreaView style={styles.container} edges={["bottom"]}>
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor="transparent"
+        translucent
+      />
+
+      <LinearGradient
+        colors={["#1A0A2E", "#3D1A6E", "#6B2FA0"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[styles.header, { paddingTop: insets.top + 8 }]}
+      >
+        <View style={styles.orb1} />
+        <View style={styles.orb2} />
+        <View style={styles.headerRow}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.backBtn}
+          >
+            <MaterialIcons name="arrow-back" size={22} color="#FFF" />
+          </TouchableOpacity>
+          <View style={styles.headerCenter}>
+            <Text style={styles.headerTitle}>Add Restaurant</Text>
+            <Text style={styles.headerSub}>Step 4 of 5 — Tables</Text>
+          </View>
+          <View style={{ width: 38 }} />
+        </View>
+        <View style={styles.progressTrack}>
+          <LinearGradient
+            colors={["#FF5A5F", "#FF9F43"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={[styles.progressFill, { width: "80%" }]}
           />
-        </TouchableOpacity>
-        <View style={styles.headerTitleContainer}>
-          <Text style={styles.headerTitle}>Add Restaurant</Text>
-          <Text style={styles.headerSubtitle}>Step 4 of 5 - Tables</Text>
         </View>
-        <View style={{ width: 24 }} />
-      </View>
+        <View style={styles.stepDots}>
+          {[1, 2, 3, 4, 5].map((i) => (
+            <View
+              key={i}
+              style={[
+                styles.dot,
+                i <= 4 && styles.dotActive,
+                i === 4 && styles.dotCurrent,
+              ]}
+            />
+          ))}
+        </View>
+      </LinearGradient>
 
-      {/* Progress Bar */}
-      <View style={styles.progressContainer}>
-        <View style={[styles.progressBar, { width: "80%" }]} />
-      </View>
-
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Summary */}
-        <View style={styles.summaryCard}>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Total Tables</Text>
-            <Text style={styles.summaryValue}>{tables.length}</Text>
-          </View>
-          <View style={styles.summaryDivider} />
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Total Capacity</Text>
-            <Text style={styles.summaryValue}>{getTotalCapacity()} seats</Text>
-          </View>
+      <ScrollView
+        style={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
+        <View style={styles.statsRow}>
+          {[
+            {
+              icon: "table-restaurant",
+              label: "Tables",
+              value: tables.length,
+              color: "#6B2FA0",
+            },
+            {
+              icon: "people",
+              label: "Total Seats",
+              value: totalCapacity,
+              color: "#FF9F43",
+            },
+          ].map((s) => (
+            <View key={s.label} style={styles.statCard}>
+              <View
+                style={[styles.statIcon, { backgroundColor: `${s.color}15` }]}
+              >
+                <MaterialIcons name={s.icon as any} size={20} color={s.color} />
+              </View>
+              <Text style={styles.statValue}>{s.value}</Text>
+              <Text style={styles.statLabel}>{s.label}</Text>
+            </View>
+          ))}
         </View>
 
-        {/* Add Table Button */}
-        {!showAddTable && (
-          <View style={styles.section}>
-            <TouchableOpacity
-              style={styles.addTableButton}
-              onPress={() => setShowAddTable(true)}
+        {!showForm && (
+          <TouchableOpacity
+            onPress={() => setShowForm(true)}
+            activeOpacity={0.8}
+            style={styles.addBtn}
+          >
+            <LinearGradient
+              colors={["rgba(107,47,160,0.08)", "rgba(107,47,160,0.04)"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.addBtnInner}
             >
               <MaterialIcons
-                name="add-circle"
-                size={24}
-                color={theme.colors.primary}
+                name="add-circle-outline"
+                size={22}
+                color="#6B2FA0"
               />
-              <Text style={styles.addTableButtonText}>Add Table</Text>
-            </TouchableOpacity>
-          </View>
+              <Text style={styles.addBtnText}>Add Table</Text>
+            </LinearGradient>
+          </TouchableOpacity>
         )}
 
-        {/* Add Table Form */}
-        {showAddTable && (
-          <View style={styles.addTableCard}>
-            <Text style={styles.addTableTitle}>New Table</Text>
-
-            {/* Table Number */}
-            <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Table Number</Text>
-              <TextInput
-                style={styles.formInput}
-                placeholder="e.g., 1, A1, VIP1"
-                value={tableNumber}
-                onChangeText={setTableNumber}
-                placeholderTextColor={theme.colors.textSecondary}
-              />
+        {showForm && (
+          <View style={styles.formCard}>
+            <View style={styles.formTitleRow}>
+              <Text style={styles.formTitle}>New Table</Text>
+              <TouchableOpacity onPress={() => setShowForm(false)}>
+                <View style={styles.formCloseBtn}>
+                  <MaterialIcons name="close" size={16} color="#8A95A3" />
+                </View>
+              </TouchableOpacity>
             </View>
-
-            {/* Capacity */}
-            <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Capacity (Seats)</Text>
-              <TextInput
-                style={styles.formInput}
-                placeholder="Number of seats"
-                value={capacity}
-                onChangeText={setCapacity}
-                keyboardType="number-pad"
-                placeholderTextColor={theme.colors.textSecondary}
-              />
-            </View>
-
-            {/* Location */}
-            <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Location</Text>
-              <View style={styles.locationButtons}>
-                {["indoor", "outdoor", "private"].map((loc) => (
-                  <TouchableOpacity
-                    key={loc}
-                    style={[
-                      styles.locationButton,
-                      location === loc && styles.locationButtonActive,
-                    ]}
-                    onPress={() => setLocation(loc as any)}
-                  >
-                    <MaterialIcons
-                      name={
-                        loc === "indoor"
-                          ? "meeting-room"
-                          : loc === "outdoor"
-                          ? "wb-sunny"
-                          : "lock"
-                      }
-                      size={20}
-                      color={location === loc ? "#FFFFFF" : theme.colors.text}
-                    />
-                    <Text
-                      style={[
-                        styles.locationButtonText,
-                        location === loc && styles.locationButtonTextActive,
-                      ]}
-                    >
-                      {loc.charAt(0).toUpperCase() + loc.slice(1)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+            <View style={styles.formRow}>
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Table No.</Text>
+                <TextInput
+                  style={styles.formInput}
+                  placeholder="e.g. T1, A1"
+                  value={tableNumber}
+                  onChangeText={setTableNumber}
+                  placeholderTextColor="#B0B8C4"
+                />
+              </View>
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Seats</Text>
+                <TextInput
+                  style={styles.formInput}
+                  placeholder="2"
+                  value={capacity}
+                  onChangeText={setCapacity}
+                  keyboardType="number-pad"
+                  maxLength={2}
+                  placeholderTextColor="#B0B8C4"
+                />
               </View>
             </View>
-
-            {/* Actions */}
-            <View style={styles.formActions}>
-              <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={() => {
-                  setShowAddTable(false);
-                  setTableNumber("");
-                  setCapacity("2");
-                  setLocation("indoor");
-                }}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.saveButton}
-                onPress={handleAddTable}
-              >
-                <Text style={styles.saveButtonText}>Add Table</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-
-        {/* Tables List */}
-        {tables.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Tables ({tables.length})</Text>
-            {tables.map((table) => (
-              <View key={table.tableId} style={styles.tableCard}>
-                <View style={styles.tableIcon}>
-                  <MaterialIcons
-                    name={
-                      table.location === "indoor"
-                        ? "meeting-room"
-                        : table.location === "outdoor"
-                        ? "wb-sunny"
-                        : "lock"
-                    }
-                    size={24}
-                    color={theme.colors.primary}
-                  />
-                </View>
-                <View style={styles.tableInfo}>
-                  <Text style={styles.tableName}>
-                    Table {table.tableNumber}
-                  </Text>
-                  <Text style={styles.tableDetails}>
-                    {table.capacity} seats • {table.location}
-                  </Text>
-                </View>
+            <Text style={styles.formLabel}>Location</Text>
+            <View style={styles.locationRow}>
+              {LOCATION_OPTIONS.map((opt) => (
                 <TouchableOpacity
-                  style={styles.deleteButton}
-                  onPress={() => handleDeleteTable(table.tableId)}
+                  key={opt.value}
+                  style={[
+                    styles.locationBtn,
+                    location === opt.value && styles.locationBtnActive,
+                    location === opt.value && { borderColor: opt.color },
+                  ]}
+                  onPress={() => setLocation(opt.value)}
+                  activeOpacity={0.8}
                 >
                   <MaterialIcons
-                    name="delete"
-                    size={20}
-                    color={theme.colors.error}
+                    name={opt.icon as any}
+                    size={18}
+                    color={location === opt.value ? opt.color : "#8A95A3"}
                   />
+                  <Text
+                    style={[
+                      styles.locationBtnText,
+                      location === opt.value && { color: opt.color },
+                    ]}
+                  >
+                    {opt.label}
+                  </Text>
                 </TouchableOpacity>
-              </View>
-            ))}
+              ))}
+            </View>
+            <View style={styles.formActions}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={() => setShowForm(false)}
+              >
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleAdd}
+                activeOpacity={0.85}
+                style={styles.saveWrap}
+              >
+                <LinearGradient
+                  colors={["#6B2FA0", "#3D1A6E"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.saveBtn}
+                >
+                  <MaterialIcons name="add" size={18} color="#FFF" />
+                  <Text style={styles.saveBtnText}>Add Table</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
-        <View style={{ height: 100 }} />
+        {grouped
+          .filter((g) => g.tables.length > 0)
+          .map((group) => (
+            <View key={group.value}>
+              <View style={styles.groupHeader}>
+                <MaterialIcons
+                  name={group.icon as any}
+                  size={14}
+                  color={group.color}
+                />
+                <Text style={[styles.groupLabel, { color: group.color }]}>
+                  {group.label} ({group.tables.length})
+                </Text>
+              </View>
+              {group.tables.map((table) => (
+                <View key={table.tableId} style={styles.tableRow}>
+                  <View
+                    style={[
+                      styles.tableIconWrap,
+                      { backgroundColor: `${group.color}12` },
+                    ]}
+                  >
+                    <MaterialIcons
+                      name={group.icon as any}
+                      size={18}
+                      color={group.color}
+                    />
+                  </View>
+                  <View style={styles.tableInfo}>
+                    <Text style={styles.tableName}>
+                      Table {table.tableNumber}
+                    </Text>
+                    <Text style={styles.tableSub}>{table.capacity} seats</Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => handleDelete(table.tableId)}
+                    style={styles.deleteBtn}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <MaterialIcons
+                      name="delete-outline"
+                      size={20}
+                      color="#FF5A5F"
+                    />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          ))}
+
+        <View style={{ height: 32 }} />
       </ScrollView>
 
-      {/* Bottom Bar */}
       <View style={styles.bottomBar}>
         <TouchableOpacity
-          style={[
-            styles.continueButton,
-            tables.length === 0 && styles.continueButtonDisabled,
-          ]}
           onPress={handleContinue}
+          activeOpacity={0.85}
           disabled={tables.length === 0}
+          style={[styles.ctaWrap, tables.length === 0 && { opacity: 0.5 }]}
         >
-          <Text style={styles.continueButtonText}>Continue</Text>
-          <MaterialIcons name="arrow-forward" size={20} color="#FFFFFF" />
+          <LinearGradient
+            colors={["#FF5A5F", "#FF9F43"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.cta}
+          >
+            <Text style={styles.ctaText}>Continue</Text>
+            <MaterialIcons name="arrow-forward" size={20} color="#FFF" />
+          </LinearGradient>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -304,212 +371,243 @@ export default function RegisterStep4() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#FFFFFF" },
-  header: {
-    flexDirection: "row",
+  container: { flex: 1, backgroundColor: "#F0F2F7" },
+  header: { paddingHorizontal: 16, paddingBottom: 20, overflow: "hidden" },
+  orb1: {
+    position: "absolute",
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: "rgba(255,90,95,0.15)",
+    top: -40,
+    right: -20,
+  },
+  orb2: {
+    position: "absolute",
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: "rgba(255,159,67,0.1)",
+    top: 10,
+    right: 80,
+  },
+  headerRow: { flexDirection: "row", alignItems: "center", marginBottom: 16 },
+  backBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    justifyContent: "center",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: theme.spacing.lg,
-    paddingVertical: theme.spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
   },
-  backButton: { padding: theme.spacing.xs },
-  headerTitleContainer: { flex: 1, alignItems: "center" },
+  headerCenter: { flex: 1, alignItems: "center" },
   headerTitle: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: "bold",
-    color: theme.colors.text,
+    fontSize: 17,
+    fontWeight: "800",
+    color: "#FFF",
+    letterSpacing: -0.3,
   },
-  headerSubtitle: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textSecondary,
+  headerSub: { fontSize: 12, color: "rgba(255,255,255,0.55)", marginTop: 2 },
+  progressTrack: {
+    height: 4,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    borderRadius: 2,
+    marginBottom: 10,
   },
-  progressContainer: { height: 4, backgroundColor: theme.colors.surface },
-  progressBar: { height: "100%", backgroundColor: theme.colors.primary },
-  content: { flex: 1 },
-  summaryCard: {
-    flexDirection: "row",
-    margin: theme.spacing.lg,
-    padding: theme.spacing.lg,
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.borderRadius.lg,
+  progressFill: { height: "100%", borderRadius: 2 },
+  stepDots: { flexDirection: "row", justifyContent: "center", gap: 6 },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "rgba(255,255,255,0.25)",
   },
-  summaryItem: { flex: 1, alignItems: "center" },
-  summaryLabel: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textSecondary,
-    marginBottom: 4,
+  dotActive: { backgroundColor: "rgba(255,159,67,0.6)" },
+  dotCurrent: { width: 20, backgroundColor: "#FF9F43" },
+  scroll: { flex: 1 },
+  scrollContent: { padding: 16, gap: 12 },
+  statsRow: { flexDirection: "row", gap: 12 },
+  statCard: {
+    flex: 1,
+    backgroundColor: "#FFF",
+    borderRadius: 16,
+    padding: 16,
+    alignItems: "center",
+    shadowColor: "#1A0A2E",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  summaryValue: {
-    fontSize: theme.fontSize.xl,
-    fontWeight: "700",
-    color: theme.colors.text,
+  statIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 13,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 8,
   },
-  summaryDivider: {
-    width: 1,
-    backgroundColor: theme.colors.border,
-    marginHorizontal: theme.spacing.lg,
+  statValue: { fontSize: 26, fontWeight: "900", color: "#0F1B2D" },
+  statLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#8A95A3",
+    marginTop: 2,
   },
-  section: { padding: theme.spacing.lg },
-  sectionTitle: {
-    fontSize: theme.fontSize.md,
-    fontWeight: "700",
-    color: theme.colors.text,
-    marginBottom: theme.spacing.md,
+  addBtn: {
+    borderRadius: 16,
+    overflow: "hidden",
+    borderWidth: 2,
+    borderStyle: "dashed",
+    borderColor: "rgba(107,47,160,0.3)",
   },
-  addTableButton: {
+  addBtnInner: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: theme.spacing.sm,
-    padding: theme.spacing.md,
-    borderRadius: theme.borderRadius.md,
-    borderWidth: 2,
-    borderColor: theme.colors.primary,
-    borderStyle: "dashed",
-    backgroundColor: `${theme.colors.primary}15`,
+    gap: 8,
+    paddingVertical: 16,
+    borderRadius: 14,
   },
-  addTableButtonText: {
-    fontSize: theme.fontSize.md,
-    fontWeight: "600",
-    color: theme.colors.primary,
+  addBtnText: { fontSize: 15, fontWeight: "700", color: "#6B2FA0" },
+  formCard: {
+    backgroundColor: "#FFF",
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: "#1A0A2E",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
   },
-  addTableCard: {
-    margin: theme.spacing.lg,
-    padding: theme.spacing.lg,
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.borderRadius.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+  formTitleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
   },
-  addTableTitle: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: "700",
-    color: theme.colors.text,
-    marginBottom: theme.spacing.lg,
+  formTitle: { fontSize: 16, fontWeight: "800", color: "#0F1B2D" },
+  formCloseBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    backgroundColor: "#F0F2F7",
+    justifyContent: "center",
+    alignItems: "center",
   },
-  formGroup: { marginBottom: theme.spacing.lg },
+  formRow: { flexDirection: "row", gap: 12, marginBottom: 14 },
+  formField: { flex: 1 },
   formLabel: {
-    fontSize: theme.fontSize.sm,
-    fontWeight: "600",
-    color: theme.colors.text,
-    marginBottom: theme.spacing.xs,
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#8A95A3",
+    marginBottom: 8,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
   },
   formInput: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.md,
-    padding: theme.spacing.md,
-    fontSize: theme.fontSize.md,
-    color: theme.colors.text,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#F8F9FC",
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "#EEF0F4",
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    fontSize: 14,
+    color: "#0F1B2D",
   },
-  locationButtons: { flexDirection: "row", gap: theme.spacing.sm },
-  locationButton: {
+  locationRow: { flexDirection: "row", gap: 8, marginBottom: 16, marginTop: 4 },
+  locationBtn: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 4,
-    padding: theme.spacing.sm,
-    borderRadius: theme.borderRadius.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: "#FFFFFF",
+    gap: 5,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "#EEF0F4",
+    backgroundColor: "#F8F9FC",
   },
-  locationButtonActive: {
-    backgroundColor: theme.colors.primary,
-    borderColor: theme.colors.primary,
-  },
-  locationButtonText: {
-    fontSize: theme.fontSize.sm,
-    fontWeight: "500",
-    color: theme.colors.text,
-  },
-  locationButtonTextActive: { color: "#FFFFFF" },
-  formActions: { flexDirection: "row", gap: theme.spacing.sm },
-  cancelButton: {
+  locationBtnActive: { backgroundColor: "#FFF", borderWidth: 2 },
+  locationBtnText: { fontSize: 12, fontWeight: "700", color: "#8A95A3" },
+  formActions: { flexDirection: "row", gap: 10 },
+  cancelBtn: {
     flex: 1,
-    padding: theme.spacing.md,
-    borderRadius: theme.borderRadius.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "#EEF0F4",
     alignItems: "center",
   },
-  cancelButtonText: {
-    fontSize: theme.fontSize.md,
-    fontWeight: "600",
-    color: theme.colors.text,
-  },
-  saveButton: {
-    flex: 1,
-    padding: theme.spacing.md,
-    borderRadius: theme.borderRadius.md,
-    backgroundColor: theme.colors.primary,
-    alignItems: "center",
-  },
-  saveButtonText: {
-    fontSize: theme.fontSize.md,
-    fontWeight: "600",
-    color: "#FFFFFF",
-  },
-  tableCard: {
+  cancelBtnText: { fontSize: 14, fontWeight: "600", color: "#8A95A3" },
+  saveWrap: { flex: 2, borderRadius: 12, overflow: "hidden" },
+  saveBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing.md,
-    padding: theme.spacing.md,
-    marginBottom: theme.spacing.sm,
-    backgroundColor: "#FFFFFF",
-    borderRadius: theme.borderRadius.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 12,
   },
-  tableIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: `${theme.colors.primary}15`,
+  saveBtnText: { fontSize: 14, fontWeight: "700", color: "#FFF" },
+  groupHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  groupLabel: {
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
+  tableRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "#FFF",
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 8,
+    shadowColor: "#1A0A2E",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  tableIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
   },
   tableInfo: { flex: 1 },
-  tableName: {
-    fontSize: theme.fontSize.md,
-    fontWeight: "600",
-    color: theme.colors.text,
-    marginBottom: 2,
-  },
-  tableDetails: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textSecondary,
-    textTransform: "capitalize",
-  },
-  deleteButton: { padding: theme.spacing.xs },
+  tableName: { fontSize: 14, fontWeight: "700", color: "#0F1B2D" },
+  tableSub: { fontSize: 12, color: "#8A95A3", marginTop: 1 },
+  deleteBtn: { padding: 4 },
   bottomBar: {
-    padding: theme.spacing.lg,
+    padding: 16,
+    backgroundColor: "#FFF",
     borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
-    backgroundColor: "#FFFFFF",
+    borderTopColor: "#EEF0F4",
   },
-  continueButton: {
+  ctaWrap: {
+    borderRadius: 14,
+    overflow: "hidden",
+    shadowColor: "#FF5A5F",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  cta: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: theme.spacing.sm,
-    backgroundColor: theme.colors.primary,
-    paddingVertical: theme.spacing.md,
-    borderRadius: theme.borderRadius.md,
-    shadowColor: theme.colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
+    gap: 8,
+    paddingVertical: 15,
   },
-  continueButtonDisabled: { opacity: 0.5 },
-  continueButtonText: {
-    fontSize: theme.fontSize.md,
-    fontWeight: "700",
-    color: "#FFFFFF",
-  },
+  ctaText: { fontSize: 16, fontWeight: "800", color: "#FFF" },
 });

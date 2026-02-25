@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
-import { theme } from "../../constants/theme";
+import { LinearGradient } from "expo-linear-gradient";
 
 interface GuestSelectorProps {
   numberOfGuests: number;
@@ -14,69 +14,81 @@ export default function GuestSelector({
   onGuestsChange,
   maxGuests,
 }: GuestSelectorProps) {
-  const handleIncrement = () => {
-    if (numberOfGuests < maxGuests) {
-      onGuestsChange(numberOfGuests + 1);
-    }
-  };
-
-  const handleDecrement = () => {
-    if (numberOfGuests > 1) {
-      onGuestsChange(numberOfGuests - 1);
-    }
-  };
+  const pct = numberOfGuests / maxGuests;
+  const isAtMax = numberOfGuests === maxGuests;
+  const isAtMin = numberOfGuests === 1;
 
   return (
     <View style={styles.container}>
-      <View style={styles.content}>
+      <View style={styles.topRow}>
         <View style={styles.info}>
           <Text style={styles.label}>Number of Guests</Text>
-          <Text style={styles.sublabel}>Maximum {maxGuests} guests</Text>
+          <Text style={styles.sublabel}>Max {maxGuests} guests allowed</Text>
         </View>
 
         <View style={styles.controls}>
+          {/* Decrement */}
           <TouchableOpacity
-            style={[
-              styles.button,
-              numberOfGuests === 1 && styles.buttonDisabled,
-            ]}
-            onPress={handleDecrement}
-            disabled={numberOfGuests === 1}
+            onPress={() => !isAtMin && onGuestsChange(numberOfGuests - 1)}
+            disabled={isAtMin}
+            activeOpacity={0.75}
           >
-            <MaterialIcons
-              name="remove"
-              size={24}
-              color={
-                numberOfGuests === 1
-                  ? theme.colors.textSecondary
-                  : theme.colors.primary
-              }
-            />
+            <View style={[styles.ctrlBtn, isAtMin && styles.ctrlBtnDisabled]}>
+              <MaterialIcons
+                name="remove"
+                size={20}
+                color={isAtMin ? "#C4CAD4" : "#FF5A5F"}
+              />
+            </View>
           </TouchableOpacity>
 
-          <View style={styles.countContainer}>
+          {/* Count */}
+          <View style={styles.countWrap}>
             <Text style={styles.countText}>{numberOfGuests}</Text>
           </View>
 
+          {/* Increment */}
           <TouchableOpacity
-            style={[
-              styles.button,
-              numberOfGuests === maxGuests && styles.buttonDisabled,
-            ]}
-            onPress={handleIncrement}
-            disabled={numberOfGuests === maxGuests}
+            onPress={() => !isAtMax && onGuestsChange(numberOfGuests + 1)}
+            disabled={isAtMax}
+            activeOpacity={0.75}
           >
-            <MaterialIcons
-              name="add"
-              size={24}
-              color={
-                numberOfGuests === maxGuests
-                  ? theme.colors.textSecondary
-                  : theme.colors.primary
-              }
-            />
+            {isAtMax ? (
+              <View style={[styles.ctrlBtn, styles.ctrlBtnDisabled]}>
+                <MaterialIcons name="add" size={20} color="#C4CAD4" />
+              </View>
+            ) : (
+              <LinearGradient
+                colors={["#FF5A5F", "#FF9F43"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.ctrlBtn}
+              >
+                <MaterialIcons name="add" size={20} color="#FFFFFF" />
+              </LinearGradient>
+            )}
           </TouchableOpacity>
         </View>
+      </View>
+
+      {/* Capacity bar */}
+      <View style={styles.barSection}>
+        <View style={styles.barBg}>
+          <LinearGradient
+            colors={
+              pct > 0.85 ? ["#EF4444", "#FF5A5F"] : ["#FF5A5F", "#FF9F43"]
+            }
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={[
+              styles.barFill,
+              { width: `${Math.min(pct * 100, 100)}%` as any },
+            ]}
+          />
+        </View>
+        <Text style={styles.barLabel}>
+          {numberOfGuests} of {maxGuests} seats
+        </Text>
       </View>
     </View>
   );
@@ -84,52 +96,61 @@ export default function GuestSelector({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.borderRadius.lg,
-    padding: theme.spacing.lg,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#EEF0F4",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+    gap: 14,
   },
-  content: {
+  topRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  info: {
-    flex: 1,
-  },
-  label: {
-    fontSize: theme.fontSize.md,
-    fontWeight: "600",
-    color: theme.colors.text,
-    marginBottom: 4,
-  },
-  sublabel: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textSecondary,
-  },
-  controls: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing.md,
-  },
-  button: {
+  info: { flex: 1 },
+  label: { fontSize: 14, fontWeight: "700", color: "#0F1B2D" },
+  sublabel: { fontSize: 11, color: "#8A95A3", fontWeight: "500", marginTop: 2 },
+
+  controls: { flexDirection: "row", alignItems: "center", gap: 10 },
+  ctrlBtn: {
     width: 36,
     height: 36,
-    borderRadius: 18,
-    backgroundColor: `${theme.colors.primary}15`, // ✅ fixed interpolation
+    borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
   },
-  buttonDisabled: {
-    backgroundColor: theme.colors.surface,
-    opacity: 0.5,
-  },
-  countContainer: {
-    minWidth: 40,
+  ctrlBtnDisabled: { backgroundColor: "#F5F6F8" },
+
+  countWrap: {
+    width: 48,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "#F5F6F8",
+    justifyContent: "center",
     alignItems: "center",
+    borderWidth: 1.5,
+    borderColor: "#EEF0F4",
   },
-  countText: {
-    fontSize: theme.fontSize.xl,
-    fontWeight: "700",
-    color: theme.colors.text,
+  countText: { fontSize: 20, fontWeight: "900", color: "#0F1B2D" },
+
+  barSection: { gap: 6 },
+  barBg: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#F5F6F8",
+    overflow: "hidden",
+  },
+  barFill: { height: "100%", borderRadius: 3 },
+  barLabel: {
+    fontSize: 11,
+    color: "#8A95A3",
+    fontWeight: "500",
+    textAlign: "right",
   },
 });

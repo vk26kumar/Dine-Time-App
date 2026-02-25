@@ -6,10 +6,11 @@ export interface Coordinates {
   latitude: number;
   longitude: number;
 }
+
 export interface SavedAddress {
   id: string;
-  label: string; // "Current Location" or "Other"
-  address: string; // Full formatted: "Street, City, State, Pincode"
+  label: string;
+  address: string;
   coordinates: Coordinates;
   isActive: boolean;
 }
@@ -19,9 +20,9 @@ export interface User {
   email: string;
   phoneNumber: string;
   fullName: string;
-  location: string | null; // Currently active address
+  location: string | null;
   coordinates: Coordinates | null;
-  savedAddresses?: SavedAddress[]; // Max 2 addresses
+  savedAddresses?: SavedAddress[];
   rolePreference: RolePreference;
   profileImage?: string;
   createdAt: Date;
@@ -40,13 +41,33 @@ export interface AuthUser {
 
 // ==================== RESTAURANT TYPES ====================
 
-export type PriceRange = "₹" | "₹₹" | "₹₹₹" | "₹₹₹₹";
 export type RestaurantStatus =
   | "pending"
   | "approved"
   | "rejected"
   | "suspended";
+
 export type TableLocation = "indoor" | "outdoor" | "private";
+
+/**
+ * Price tier derived from bookingFeePerPerson at runtime.
+ * Use getPriceTier() helper — never store this in Firestore.
+ * 1 = budget (₹0–199), 2 = mid (₹200–499), 3 = upscale (₹500–999), 4 = luxury (₹1000+)
+ */
+export type PriceTier = 1 | 2 | 3 | 4;
+
+/** Returns a display label like "₹₹" derived from the actual fee. */
+export function getPriceTier(bookingFeePerPerson: number): PriceTier {
+  if (bookingFeePerPerson < 200) return 1;
+  if (bookingFeePerPerson < 500) return 2;
+  if (bookingFeePerPerson < 1000) return 3;
+  return 4;
+}
+
+/** Returns the symbolic string for display only — never use for logic. */
+export function getPriceLabel(bookingFeePerPerson: number): string {
+  return "₹".repeat(getPriceTier(bookingFeePerPerson));
+}
 
 export interface Address {
   street: string;
@@ -57,8 +78,8 @@ export interface Address {
 }
 
 export interface OperatingHours {
-  open: string; 
-  close: string; 
+  open: string;
+  close: string;
   closed: boolean;
 }
 
@@ -77,8 +98,8 @@ export interface RestaurantImages {
 
 export interface CancellationPolicy {
   allowCancellation: boolean;
-  isRefundable: boolean; // Always false for non-refundable
-  minimumNoticeHours: number; // Not used if non-refundable, but kept for future
+  isRefundable: boolean;
+  minimumNoticeHours: number;
 }
 
 export interface Restaurant {
@@ -91,7 +112,6 @@ export interface Restaurant {
   name: string;
   description: string;
   cuisine: string[];
-  priceRange: PriceRange;
 
   // Location
   address: Address;
@@ -124,7 +144,8 @@ export interface Restaurant {
   amenities: string[];
   features: string[];
 
-  // Booking Fee (Non-refundable)
+  // Booking Fee — this is the single source of truth for pricing.
+  // Use getPriceTier() / getPriceLabel() for display purposes only.
   bookingFeePerPerson: number;
   cancellationPolicy: CancellationPolicy;
 
@@ -150,20 +171,26 @@ export interface Restaurant {
 // ==================== BOOKING TYPES ====================
 
 export type BookingStatus = "confirmed" | "cancelled" | "completed" | "no-show";
+
 export type PaymentStatus = "pending" | "success" | "failed";
-export type PaymentMethod = "card" | "upi" | "netbanking" | "wallet";
+export type PaymentMethod =
+  | "card"
+  | "upi"
+  | "netbanking"
+  | "wallet"
+  | "razorpay";
 export type CancelledBy = "user" | "restaurant" | "admin";
 
 export interface Payment {
+  /** Total charged = perPersonFee × totalGuests */
   amount: number;
   perPersonFee: number;
   totalGuests: number;
   currency: string;
-  // Payment Gateway IDs (using Razorpay or Stripe)
-  paymentIntentId?: string; 
-  razorpayOrderId?: string; 
-  razorpayPaymentId?: string; 
-  razorpaySignature?: string; 
+  paymentIntentId?: string;
+  razorpayOrderId?: string;
+  razorpayPaymentId?: string;
+  razorpaySignature?: string;
   status: PaymentStatus;
   paidAt?: Date;
   method?: PaymentMethod;
@@ -181,10 +208,10 @@ export interface Booking {
   userEmail: string;
 
   // Booking Details
-  date: Date; 
-  timeSlot: string; 
+  date: Date;
+  timeSlot: string;
   numberOfGuests: number;
-  tableIds: string[]; 
+  tableIds: string[];
 
   // Status
   status: BookingStatus;
@@ -194,7 +221,7 @@ export interface Booking {
 
   // Special Requests
   specialRequests?: string;
-  occasion?: string; 
+  occasion?: string;
 
   // Timestamps
   createdAt: Date;
@@ -202,15 +229,12 @@ export interface Booking {
   cancelledAt?: Date;
   completedAt?: Date;
 
-  // Cancellation (User can cancel but NO REFUND)
   cancellationReason?: string;
   cancelledBy?: CancelledBy;
-
-  // Non-refundable flag (always true for this app)
-  isNonRefundable: boolean; 
+  isNonRefundable: boolean;
 }
 
-// ==================== REVIEW TYPES (Optional - for future) ====================
+// ==================== REVIEW TYPES ====================
 
 export interface Review {
   id: string;
@@ -218,7 +242,7 @@ export interface Review {
   userId: string;
   userName: string;
   bookingId: string;
-  rating: number; 
+  rating: number;
   review: string;
   images?: string[];
   createdAt: Date;

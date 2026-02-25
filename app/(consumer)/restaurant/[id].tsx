@@ -9,24 +9,40 @@ import {
   StatusBar,
   Dimensions,
   ActivityIndicator,
+  Linking,
+  Platform,
+  Share,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../../config/firebase";
 import { MaterialIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { Restaurant } from "../../../types";
+
 import { theme } from "../../../constants/theme";
+// ADD THIS IMPORT AT TOP
+import { Restaurant, getPriceLabel } from "../../../types";
 
 const { width, height } = Dimensions.get("window");
+const DAY_ORDER = [
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+  "sunday",
+];
 
 export default function RestaurantDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
+  const insets = useSafeAreaInsets();
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [hoursExpanded, setHoursExpanded] = useState(false);
 
   useEffect(() => {
     loadRestaurant();
@@ -37,7 +53,6 @@ export default function RestaurantDetailScreen() {
       setLoading(true);
       const docRef = doc(db, "restaurants", id as string);
       const docSnap = await getDoc(docRef);
-
       if (docSnap.exists()) {
         const data = docSnap.data();
         setRestaurant({
@@ -49,7 +64,7 @@ export default function RestaurantDetailScreen() {
         } as Restaurant);
       }
     } catch (error) {
-      console.error("Error loading restaurant:", error);
+      console.error(error);
     } finally {
       setLoading(false);
     }
@@ -61,50 +76,79 @@ export default function RestaurantDetailScreen() {
     const dayName = now
       .toLocaleDateString("en-US", { weekday: "long" })
       .toLowerCase() as keyof typeof restaurant.operatingHours;
-    const todayHours = restaurant.operatingHours[dayName];
-
-    if (todayHours.closed) return false;
-
-    const currentTime = now.getHours() * 60 + now.getMinutes();
-    const [openHour, openMin] = todayHours.open.split(":").map(Number);
-    const [closeHour, closeMin] = todayHours.close.split(":").map(Number);
-    const openTime = openHour * 60 + openMin;
-    const closeTime = closeHour * 60 + closeMin;
-
-    return currentTime >= openTime && currentTime <= closeTime;
+    const h = restaurant.operatingHours[dayName];
+    if (h.closed) return false;
+    const cur = now.getHours() * 60 + now.getMinutes();
+    const [oh, om] = h.open.split(":").map(Number);
+    const [ch, cm] = h.close.split(":").map(Number);
+    return cur >= oh * 60 + om && cur <= ch * 60 + cm;
   };
 
-  const handleBookNow = () => {
+  const getTodayName = () =>
+    new Date().toLocaleDateString("en-US", { weekday: "long" }).toLowerCase();
+
+  const handleGetDirections = () => {
+    if (!restaurant?.address) return;
+    const encoded = encodeURIComponent(
+      `${restaurant.address.street}, ${restaurant.address.city}`,
+    );
+    const url = Platform.select({
+      ios: `maps://0,0?q=${encoded}`,
+      android: `geo:0,0?q=${encoded}`,
+    });
+    const fallback = `https://www.google.com/maps/search/?api=1&query=${encoded}`;
+    Linking.canOpenURL(url!)
+      .then((ok) => Linking.openURL(ok ? url! : fallback))
+      .catch(() => Linking.openURL(fallback));
+  };
+
+  const handleCall = () => {
+    if (restaurant?.phone) Linking.openURL(`tel:${restaurant.phone}`);
+  };
+  const handleShare = async () => {
     if (!restaurant) return;
-    router.push(`/(consumer)/booking/${restaurant.id}`);
+    try {
+      await Share.share({
+        message: `Check out ${restaurant.name} at ${restaurant.address?.street}, ${restaurant.address?.city}`,
+        title: restaurant.name,
+      });
+    } catch {}
+  };
+  const handleBookNow = () => {
+    if (restaurant) router.push(`/(consumer)/booking/${restaurant.id}`);
   };
 
+  // ── Loading ──
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={theme.colors.primary} />
+        <LinearGradient
+          colors={["#1A0A2E", "#3D1A6E", "#6B2FA0"]}
+          style={styles.loadingGradient}
+        >
+          <View style={styles.loadingOrb} />
+          <ActivityIndicator size="large" color="#FFFFFF" />
+          <Text style={styles.loadingText}>Loading restaurant...</Text>
+        </LinearGradient>
       </View>
     );
   }
 
+  // ── Error ──
   if (!restaurant) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.errorContainer}>
-          <MaterialIcons
-            name="error-outline"
-            size={64}
-            color={theme.colors.textSecondary}
-          />
-          <Text style={styles.errorText}>Restaurant not found</Text>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.back()}
-          >
-            <Text style={styles.backButtonText}>Go Back</Text>
-          </TouchableOpacity>
+      <View style={[styles.errorContainer, { paddingTop: insets.top }]}>
+        <View style={styles.errorIconWrap}>
+          <MaterialIcons name="error-outline" size={36} color="#FF5A5F" />
         </View>
-      </SafeAreaView>
+        <Text style={styles.errorTitle}>Restaurant Not Found</Text>
+        <Text style={styles.errorSubtitle}>
+          This restaurant may no longer be available.
+        </Text>
+        <TouchableOpacity style={styles.errorBtn} onPress={() => router.back()}>
+          <Text style={styles.errorBtnText}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
     );
   }
 
@@ -112,318 +156,492 @@ export default function RestaurantDetailScreen() {
     restaurant.images.coverImage,
     ...restaurant.images.gallery,
   ].filter(Boolean);
+  const open = isOpenNow();
+  const todayName = getTodayName();
+  const todayHours =
+    restaurant.operatingHours[
+      todayName as keyof typeof restaurant.operatingHours
+    ];
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
 
-      {/* Image Gallery */}
-      <View style={styles.imageContainer}>
+      {/* ── Hero Gallery ── */}
+      <View style={[styles.imageContainer, { height: height * 0.44 }]}>
         <ScrollView
           horizontal
           pagingEnabled
           showsHorizontalScrollIndicator={false}
-          onMomentumScrollEnd={(e) => {
-            const index = Math.round(e.nativeEvent.contentOffset.x / width);
-            setActiveImageIndex(index);
-          }}
+          onMomentumScrollEnd={(e) =>
+            setActiveImageIndex(
+              Math.round(e.nativeEvent.contentOffset.x / width),
+            )
+          }
         >
-          {allImages.map((image, index) => (
+          {allImages.map((img, i) => (
             <Image
-              key={index}
-              source={{ uri: image }}
-              style={styles.image}
+              key={i}
+              source={{ uri: img }}
+              style={[styles.image, { height: height * 0.44 }]}
               resizeMode="cover"
             />
           ))}
         </ScrollView>
 
-        {/* Image Indicator */}
-        {allImages.length > 1 ? (
+        <LinearGradient
+          colors={["rgba(0,0,0,0.55)", "transparent"]}
+          style={styles.topGradient}
+        />
+        <LinearGradient
+          colors={["transparent", "rgba(0,0,0,0.85)"]}
+          style={styles.bottomGradient}
+        />
+
+        {/* Top Actions — respects status bar via insets.top */}
+        <View style={[styles.imageTopActions, { top: insets.top + 10 }]}>
+          <TouchableOpacity
+            style={styles.imageActionBtn}
+            onPress={() => router.back()}
+          >
+            <MaterialIcons name="arrow-back" size={22} color="#FFF" />
+          </TouchableOpacity>
+          <View style={styles.imageTopRight}>
+            <TouchableOpacity
+              style={styles.imageActionBtn}
+              onPress={handleShare}
+            >
+              <MaterialIcons name="share" size={22} color="#FFF" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Photo counter */}
+        {allImages.length > 1 && (
+          <View style={[styles.imageCounter, { top: insets.top + 16 }]}>
+            <MaterialIcons name="photo-library" size={12} color="#FFF" />
+            <Text style={styles.imageCounterText}>
+              {activeImageIndex + 1}/{allImages.length}
+            </Text>
+          </View>
+        )}
+
+        {/* Dot indicators */}
+        {allImages.length > 1 && (
           <View style={styles.imageIndicator}>
-            {allImages.map((_, index) => (
+            {allImages.map((_, i) => (
               <View
-                key={index}
+                key={i}
                 style={[
                   styles.indicatorDot,
-                  index === activeImageIndex && styles.indicatorDotActive,
+                  i === activeImageIndex && styles.indicatorDotActive,
                 ]}
               />
             ))}
           </View>
-        ) : null}
+        )}
 
-        {/* Back Button */}
-        <TouchableOpacity
-          style={styles.backIconButton}
-          onPress={() => router.back()}
-        >
-          <LinearGradient
-            colors={["rgba(0,0,0,0.6)", "rgba(0,0,0,0.3)"]}
-            style={styles.backIconGradient}
-          >
-            <MaterialIcons name="arrow-back" size={24} color="#FFFFFF" />
-          </LinearGradient>
-        </TouchableOpacity>
-
-        {/* Share Button */}
-        <TouchableOpacity style={styles.shareButton}>
-          <LinearGradient
-            colors={["rgba(0,0,0,0.6)", "rgba(0,0,0,0.3)"]}
-            style={styles.shareIconGradient}
-          >
-            <MaterialIcons name="share" size={22} color="#FFFFFF" />
-          </LinearGradient>
-        </TouchableOpacity>
-
-        {/* Gradient Overlay */}
-        <LinearGradient
-          colors={["transparent", "rgba(0,0,0,0.7)"]}
-          style={styles.imageGradient}
-        />
+        {/* Name + Status overlay */}
+        <View style={styles.heroInfo}>
+          <View style={styles.heroInfoTop}>
+            <Text style={styles.heroName} numberOfLines={2}>
+              {restaurant.name}
+            </Text>
+            <View
+              style={[
+                styles.statusBadge,
+                open ? styles.openBadge : styles.closedBadge,
+              ]}
+            >
+              <View
+                style={[
+                  styles.statusDot,
+                  open ? styles.openDot : styles.closedDot,
+                ]}
+              />
+              <Text
+                style={[
+                  styles.statusText,
+                  open ? styles.openText : styles.closedText,
+                ]}
+              >
+                {open ? "Open Now" : "Closed"}
+              </Text>
+            </View>
+          </View>
+          {restaurant.cuisine.length > 0 && (
+            <Text style={styles.heroSubline} numberOfLines={1}>
+              {restaurant.cuisine.join(" · ")}
+              {restaurant.address?.city ? ` · ${restaurant.address.city}` : ""}
+            </Text>
+          )}
+        </View>
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Header Info */}
-        <View style={styles.header}>
-          <View style={styles.headerTop}>
-            <View style={styles.titleContainer}>
-              <Text style={styles.name}>{String(restaurant.name)}</Text>
-              {isOpenNow() ? (
-                <View style={styles.openBadge}>
-                  <View style={styles.openDot} />
-                  <Text style={styles.openText}>Open Now</Text>
-                </View>
-              ) : (
-                <View style={styles.closedBadge}>
-                  <Text style={styles.closedText}>Closed</Text>
-                </View>
-              )}
-            </View>
-          </View>
-
-          {/* Rating & Reviews */}
-          {restaurant.averageRating && restaurant.averageRating > 0 ? (
-            <View style={styles.ratingContainer}>
-              <View style={styles.ratingBadge}>
-                <MaterialIcons name="star" size={18} color="#FFFFFF" />
-                <Text style={styles.ratingText}>
-                  {String(restaurant.averageRating.toFixed(1))}
-                </Text>
-              </View>
-              <Text style={styles.reviewsText}>
-                {String(restaurant.totalReviews)} reviews
-              </Text>
-            </View>
-          ) : null}
-
-          {/* Cuisine Tags */}
-          <View style={styles.cuisineContainer}>
-            {restaurant.cuisine.map((cuisine, index) => (
-              <View key={index} style={styles.cuisineTag}>
-                <Text style={styles.cuisineTagText}>{String(cuisine)}</Text>
-              </View>
-            ))}
-            {restaurant.priceRange ? (
-              <View style={styles.priceTag}>
-                <Text style={styles.priceTagText}>
-                  {String(restaurant.priceRange)}
-                </Text>
-              </View>
-            ) : null}
-          </View>
-
-          {/* Description */}
-          {restaurant.description ? (
-            <Text style={styles.description}>
-              {String(restaurant.description)}
-            </Text>
-          ) : null}
+        {/* ── Quick Actions ── */}
+        <View style={styles.quickActions}>
+          {[
+            {
+              icon: "near-me",
+              label: "Directions",
+              action: handleGetDirections,
+            },
+            { icon: "call", label: "Call", action: handleCall },
+            { icon: "share", label: "Share", action: handleShare },
+            { icon: "favorite-border", label: "Save", action: () => {} },
+          ].map((item) => (
+            <TouchableOpacity
+              key={item.label}
+              style={styles.quickActionBtn}
+              onPress={item.action}
+              activeOpacity={0.7}
+            >
+              <LinearGradient
+                colors={["#FF5A5F15", "#FF9F4315"]}
+                style={styles.quickActionIcon}
+              >
+                <MaterialIcons
+                  name={item.icon as any}
+                  size={20}
+                  color="#FF5A5F"
+                />
+              </LinearGradient>
+              <Text style={styles.quickActionText}>{item.label}</Text>
+            </TouchableOpacity>
+          ))}
         </View>
 
-        {/* Location Section */}
+        {/* ── About ── */}
+        {restaurant.description ? (
+          <View style={styles.section}>
+            <SectionTitle title="About" />
+            <Text style={styles.description}>{restaurant.description}</Text>
+          </View>
+        ) : null}
+
+        {/* ── Location ── */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Location</Text>
+          <SectionTitle title="Location" />
           <View style={styles.locationCard}>
-            <MaterialIcons
-              name="place"
-              size={24}
-              color={theme.colors.primary}
-            />
+            <LinearGradient
+              colors={["#FF5A5F", "#FF9F43"]}
+              style={styles.locationIconWrap}
+            >
+              <MaterialIcons name="place" size={20} color="#FFFFFF" />
+            </LinearGradient>
             <View style={styles.locationInfo}>
               {restaurant.address?.street ? (
                 <Text style={styles.locationAddress}>
-                  {String(restaurant.address.street)}
+                  {restaurant.address.street}
                 </Text>
               ) : null}
               <Text style={styles.locationCity}>
-                {String(restaurant.address?.city || "")}
-                {restaurant.address?.state
-                  ? `, ${String(restaurant.address.state)}`
-                  : ""}
+                {[restaurant.address?.city, restaurant.address?.state]
+                  .filter(Boolean)
+                  .join(", ")}
                 {restaurant.address?.pincode
-                  ? ` - ${String(restaurant.address.pincode)}`
+                  ? ` – ${restaurant.address.pincode}`
                   : ""}
               </Text>
               {restaurant.address?.landmark ? (
                 <Text style={styles.locationLandmark}>
-                  Near {String(restaurant.address.landmark)}
+                  Near {restaurant.address.landmark}
                 </Text>
               ) : null}
             </View>
           </View>
-          <TouchableOpacity style={styles.directionsButton}>
-            <MaterialIcons
-              name="directions"
-              size={20}
-              color={theme.colors.primary}
-            />
-            <Text style={styles.directionsText}>Get Directions</Text>
+          <TouchableOpacity
+            style={styles.directionsBtn}
+            onPress={handleGetDirections}
+            activeOpacity={0.8}
+          >
+            <MaterialIcons name="directions" size={18} color="#FF5A5F" />
+            <Text style={styles.directionsBtnText}>Get Directions</Text>
+            <MaterialIcons name="open-in-new" size={14} color="#FF5A5F" />
           </TouchableOpacity>
         </View>
 
-        {/* Contact Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Contact</Text>
-          {restaurant.phone ? (
-            <View style={styles.contactRow}>
-              <MaterialIcons
-                name="phone"
-                size={20}
-                color={theme.colors.textSecondary}
-              />
-              <Text style={styles.contactText}>{String(restaurant.phone)}</Text>
-            </View>
-          ) : null}
-          {restaurant.email ? (
-            <View style={styles.contactRow}>
-              <MaterialIcons
-                name="email"
-                size={20}
-                color={theme.colors.textSecondary}
-              />
-              <Text style={styles.contactText}>{String(restaurant.email)}</Text>
-            </View>
-          ) : null}
-          {restaurant.website ? (
-            <View style={styles.contactRow}>
-              <MaterialIcons
-                name="language"
-                size={20}
-                color={theme.colors.textSecondary}
-              />
-              <Text style={styles.contactText}>
-                {String(restaurant.website)}
-              </Text>
-            </View>
-          ) : null}
-        </View>
+        {/* ── Contact ── */}
+        {restaurant.phone || restaurant.email ? (
+          <View style={styles.section}>
+            <SectionTitle title="Contact" />
+            <View style={styles.contactCard}>
+              {restaurant.phone ? (
+                <TouchableOpacity
+                  style={styles.contactRow}
+                  onPress={handleCall}
+                  activeOpacity={0.7}
+                >
+                  <View
+                    style={[
+                      styles.contactIconWrap,
+                      { backgroundColor: "#FFF0F0" },
+                    ]}
+                  >
+                    <MaterialIcons name="phone" size={17} color="#FF5A5F" />
+                  </View>
+                  <View style={styles.contactInfo}>
+                    <Text style={styles.contactLabel}>Phone</Text>
+                    <Text style={styles.contactValue}>{restaurant.phone}</Text>
+                  </View>
+                  <LinearGradient
+                    colors={["#FF5A5F", "#FF9F43"]}
+                    style={styles.contactActionBtn}
+                  >
+                    <Text style={styles.contactActionText}>Call</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              ) : null}
 
-        {/* Operating Hours */}
+              {restaurant.email ? (
+                <TouchableOpacity
+                  style={[
+                    styles.contactRow,
+                    restaurant.phone ? styles.contactRowBorder : null,
+                  ]}
+                  onPress={() => Linking.openURL(`mailto:${restaurant.email}`)}
+                  activeOpacity={0.7}
+                >
+                  <View
+                    style={[
+                      styles.contactIconWrap,
+                      { backgroundColor: "#F0F4FF" },
+                    ]}
+                  >
+                    <MaterialIcons name="email" size={17} color="#6B2FA0" />
+                  </View>
+                  <View style={styles.contactInfo}>
+                    <Text style={styles.contactLabel}>Email</Text>
+                    <Text style={styles.contactValue}>{restaurant.email}</Text>
+                  </View>
+                  <LinearGradient
+                    colors={["#6B2FA0", "#A855F7"]}
+                    style={styles.contactActionBtn}
+                  >
+                    <Text style={styles.contactActionText}>Mail</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
+        ) : null}
+
+        {/* ── Operating Hours ── */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Operating Hours</Text>
-          {Object.entries(restaurant.operatingHours).map(([day, hours]) => (
-            <View key={day} style={styles.hoursRow}>
-              <Text style={styles.dayText}>
-                {String(day.charAt(0).toUpperCase() + day.slice(1))}
+          <TouchableOpacity
+            style={styles.sectionTitleRow}
+            onPress={() => setHoursExpanded(!hoursExpanded)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.sectionTitleLeft}>
+              <View style={styles.sectionDot} />
+              <Text style={styles.sectionTitleText}>Hours</Text>
+            </View>
+            <View style={styles.hoursToggle}>
+              <Text style={styles.hoursToggleText}>
+                {hoursExpanded ? "Show less" : "See all"}
               </Text>
-              {hours.closed ? (
-                <Text style={styles.closedHoursText}>Closed</Text>
-              ) : (
-                <Text style={styles.hoursText}>
-                  {String(hours.open)} - {String(hours.close)}
+              <MaterialIcons
+                name={hoursExpanded ? "expand-less" : "expand-more"}
+                size={20}
+                color="#FF5A5F"
+              />
+            </View>
+          </TouchableOpacity>
+
+          {/* Today Card */}
+          <View style={styles.todayCard}>
+            <LinearGradient
+              colors={["#FF5A5F", "#FF9F43"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.todayPill}
+            >
+              <Text style={styles.todayPillText}>Today</Text>
+            </LinearGradient>
+            <Text style={styles.todayDayText}>
+              {todayName.charAt(0).toUpperCase() + todayName.slice(1)}
+            </Text>
+            <View style={{ flex: 1 }} />
+            {todayHours?.closed ? (
+              <View style={styles.closedChip}>
+                <Text style={styles.closedChipText}>Closed</Text>
+              </View>
+            ) : (
+              <View style={styles.openTimeWrap}>
+                <View
+                  style={[styles.statusDot, styles.openDot, { marginRight: 6 }]}
+                />
+                <Text style={styles.openTimeText}>
+                  {todayHours?.open} – {todayHours?.close}
                 </Text>
-              )}
+              </View>
+            )}
+          </View>
+
+          {hoursExpanded && (
+            <View style={styles.hoursCard}>
+              {DAY_ORDER.map((day, idx) => {
+                const hours =
+                  restaurant.operatingHours[
+                    day as keyof typeof restaurant.operatingHours
+                  ];
+                if (!hours) return null;
+                const isToday = todayName === day;
+                return (
+                  <View
+                    key={day}
+                    style={[
+                      styles.hoursRow,
+                      idx < DAY_ORDER.length - 1 && styles.hoursRowBorder,
+                      isToday && styles.hoursRowToday,
+                    ]}
+                  >
+                    <Text
+                      style={[styles.dayText, isToday && styles.dayTextToday]}
+                    >
+                      {day.charAt(0).toUpperCase() + day.slice(1)}
+                    </Text>
+                    {hours.closed ? (
+                      <Text style={styles.closedHoursText}>Closed</Text>
+                    ) : (
+                      <Text
+                        style={[
+                          styles.hoursTimeText,
+                          isToday && styles.hoursTimeTextToday,
+                        ]}
+                      >
+                        {hours.open} – {hours.close}
+                      </Text>
+                    )}
+                  </View>
+                );
+              })}
             </View>
-          ))}
+          )}
         </View>
 
-        {/* Amenities */}
+        {/* ── Amenities ── */}
         {restaurant.amenities && restaurant.amenities.length > 0 ? (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Amenities</Text>
+            <SectionTitle title="Amenities" />
             <View style={styles.amenitiesGrid}>
-              {restaurant.amenities.map((amenity, index) => (
-                <View key={index} style={styles.amenityItem}>
-                  <MaterialIcons
-                    name="check-circle"
-                    size={20}
-                    color={theme.colors.primary}
-                  />
-                  <Text style={styles.amenityText}>{String(amenity)}</Text>
+              {restaurant.amenities.map((amenity, i) => (
+                <View key={i} style={styles.amenityItem}>
+                  <View style={styles.amenityIconWrap}>
+                    <MaterialIcons name="check" size={13} color="#FF5A5F" />
+                  </View>
+                  <Text style={styles.amenityText}>{amenity}</Text>
                 </View>
               ))}
             </View>
           </View>
         ) : null}
 
-        {/* Features */}
+        {/* ── Features ── */}
         {restaurant.features && restaurant.features.length > 0 ? (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Features</Text>
-            <View style={styles.featuresContainer}>
-              {restaurant.features.map((feature, index) => (
-                <View key={index} style={styles.featureTag}>
-                  <Text style={styles.featureText}>{String(feature)}</Text>
+            <SectionTitle title="Features" />
+            <View style={styles.tagsWrap}>
+              {restaurant.features.map((f, i) => (
+                <View key={i} style={styles.featureTag}>
+                  <Text style={styles.featureTagText}>{f}</Text>
                 </View>
               ))}
             </View>
           </View>
         ) : null}
 
-        {/* Booking Fee Info */}
+        {/* ── Booking Info ── */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Booking Information</Text>
+          <SectionTitle title="Booking Information" />
           <View style={styles.bookingInfoCard}>
-            <View style={styles.bookingInfoRow}>
-              <Text style={styles.bookingInfoLabel}>Booking Fee:</Text>
-              {restaurant.bookingFeePerPerson === 0 ? (
-                <Text style={styles.bookingInfoValueFree}>FREE</Text>
-              ) : (
+            <BookingInfoRow
+              icon="confirmation-number"
+              iconBg="#FFF0F0"
+              iconColor="#FF5A5F"
+              label="Booking Fee"
+              sub="Per person charge"
+              right={
+                restaurant.bookingFeePerPerson === 0 ? (
+                  <View style={styles.freeBadge}>
+                    <Text style={styles.freeBadgeText}>FREE</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.bookingInfoValue}>
+                    ₹{restaurant.bookingFeePerPerson}
+                    <Text style={styles.bookingInfoPer}>/person</Text>
+                  </Text>
+                )
+              }
+            />
+            <BookingInfoRow
+              icon="cancel"
+              iconBg="#FEF2F2"
+              iconColor="#EF4444"
+              label="Cancellation Policy"
+              sub="No refunds on cancellation"
+              border
+              right={
+                <View style={styles.nonRefundBadge}>
+                  <Text style={styles.nonRefundBadgeText}>Non-refundable</Text>
+                </View>
+              }
+            />
+            <BookingInfoRow
+              icon="event-seat"
+              iconBg="#F0F9FF"
+              iconColor="#6B2FA0"
+              label="Total Capacity"
+              sub="Maximum guests"
+              border
+              right={
                 <Text style={styles.bookingInfoValue}>
-                  ₹{String(restaurant.bookingFeePerPerson)}/person
+                  {restaurant.totalCapacity}
+                  <Text style={styles.bookingInfoPer}> seats</Text>
                 </Text>
-              )}
-            </View>
-            <View style={styles.bookingInfoRow}>
-              <Text style={styles.bookingInfoLabel}>Cancellation:</Text>
-              <Text style={styles.bookingInfoValue}>Non-refundable</Text>
-            </View>
-            <View style={styles.bookingInfoRow}>
-              <Text style={styles.bookingInfoLabel}>Total Capacity:</Text>
-              <Text style={styles.bookingInfoValue}>
-                {String(restaurant.totalCapacity)} seats
-              </Text>
-            </View>
+              }
+            />
           </View>
         </View>
 
-        <View style={{ height: 100 }} />
+        <View style={{ height: 110 }} />
       </ScrollView>
 
-      {/* Bottom Book Button */}
-      <View style={styles.bottomBar}>
+      {/* ── Bottom CTA — respects home indicator ── */}
+      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 14 }]}>
         <View style={styles.priceInfo}>
           {restaurant.bookingFeePerPerson === 0 ? (
-            <Text style={styles.freePriceText}>Free Booking</Text>
+            <>
+              <Text style={styles.priceLabel}>Booking</Text>
+              <Text style={styles.freePriceText}>Free</Text>
+            </>
           ) : (
             <>
-              <Text style={styles.priceLabel}>Booking Fee</Text>
-              <Text style={styles.priceValue}>
-                ₹{String(restaurant.bookingFeePerPerson)}/person
-              </Text>
+              <Text style={styles.priceLabel}>From</Text>
+              <View style={styles.priceRow}>
+                <Text style={styles.priceValue}>
+                  ₹{restaurant.bookingFeePerPerson}
+                </Text>
+                <Text style={styles.pricePer}>/person</Text>
+              </View>
             </>
           )}
         </View>
-        <TouchableOpacity style={styles.bookButton} onPress={handleBookNow}>
+        <TouchableOpacity
+          onPress={handleBookNow}
+          activeOpacity={0.9}
+          style={styles.bookBtnWrap}
+        >
           <LinearGradient
-            colors={[theme.colors.primary, "#FF8E53"]}
+            colors={["#FF5A5F", "#FF9F43"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
-            style={styles.bookButtonGradient}
+            style={styles.bookBtnGradient}
           >
-            <Text style={styles.bookButtonText}>Book Now</Text>
-            <MaterialIcons name="arrow-forward" size={20} color="#FFFFFF" />
+            <Text style={styles.bookBtnText}>Book a Table</Text>
+            <MaterialIcons name="arrow-forward" size={18} color="#FFF" />
           </LinearGradient>
         </TouchableOpacity>
       </View>
@@ -431,401 +649,547 @@ export default function RestaurantDetailScreen() {
   );
 }
 
+// ─── Sub-components ───────────────────────────────────────────────────────────
+const SectionTitle = ({ title }: { title: string }) => (
+  <View style={styles.sectionTitleLeft}>
+    <View style={styles.sectionDot} />
+    <Text style={styles.sectionTitleText}>{title}</Text>
+  </View>
+);
+
+const BookingInfoRow = ({
+  icon,
+  iconBg,
+  iconColor,
+  label,
+  sub,
+  right,
+  border,
+}: {
+  icon: any;
+  iconBg: string;
+  iconColor: string;
+  label: string;
+  sub: string;
+  right: React.ReactNode;
+  border?: boolean;
+}) => (
+  <View style={[styles.bookingInfoRow, border && styles.bookingInfoRowBorder]}>
+    <View style={styles.bookingInfoLeft}>
+      <View style={[styles.bookingInfoIconWrap, { backgroundColor: iconBg }]}>
+        <MaterialIcons name={icon} size={16} color={iconColor} />
+      </View>
+      <View>
+        <Text style={styles.bookingInfoLabel}>{label}</Text>
+        <Text style={styles.bookingInfoSub}>{sub}</Text>
+      </View>
+    </View>
+    {right}
+  </View>
+);
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#FFFFFF",
-  },
-  loadingContainer: {
+  container: { flex: 1, backgroundColor: "#F5F6F8" },
+
+  // Loading
+  loadingContainer: { flex: 1 },
+  loadingGradient: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
+    gap: 16,
   },
+  loadingOrb: {
+    position: "absolute",
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: "rgba(255,90,95,0.15)",
+    top: "30%",
+    right: -40,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: "rgba(255,255,255,0.8)",
+    fontWeight: "600",
+    marginTop: 8,
+  },
+
+  // Error
   errorContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: theme.spacing.xl,
+    padding: 32,
+    gap: 12,
+    backgroundColor: "#F5F6F8",
   },
-  errorText: {
-    fontSize: theme.fontSize.lg,
-    color: theme.colors.textSecondary,
-    marginTop: theme.spacing.lg,
-    marginBottom: theme.spacing.xl,
-  },
-  backButton: {
-    paddingHorizontal: theme.spacing.xl,
-    paddingVertical: theme.spacing.md,
-    backgroundColor: theme.colors.primary,
-    borderRadius: theme.borderRadius.md,
-  },
-  backButtonText: {
-    color: "#FFFFFF",
-    fontSize: theme.fontSize.md,
-    fontWeight: "600",
-  },
-  imageContainer: {
-    width,
-    height: height * 0.4,
-    position: "relative",
-  },
-  image: {
-    width,
-    height: height * 0.4,
-  },
-  imageIndicator: {
-    position: "absolute",
-    bottom: theme.spacing.lg,
-    alignSelf: "center",
-    flexDirection: "row",
-    gap: 6,
-  },
-  indicatorDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "rgba(255, 255, 255, 0.5)",
-  },
-  indicatorDotActive: {
-    backgroundColor: "#FFFFFF",
-    width: 20,
-  },
-  backIconButton: {
-    position: "absolute",
-    top: 50,
-    left: theme.spacing.lg,
-    borderRadius: 20,
-    overflow: "hidden",
-  },
-  backIconGradient: {
-    width: 40,
-    height: 40,
+  errorIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: "#FFF0F0",
     justifyContent: "center",
     alignItems: "center",
   },
-  shareButton: {
-    position: "absolute",
-    top: 50,
-    right: theme.spacing.lg,
-    borderRadius: 20,
-    overflow: "hidden",
+  errorTitle: { fontSize: 20, fontWeight: "700", color: "#0F1B2D" },
+  errorSubtitle: { fontSize: 14, color: "#8A95A3", textAlign: "center" },
+  errorBtn: {
+    paddingHorizontal: 28,
+    paddingVertical: 12,
+    backgroundColor: "#FF5A5F",
+    borderRadius: 14,
+    marginTop: 8,
   },
-  shareIconGradient: {
-    width: 40,
-    height: 40,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  imageGradient: {
+  errorBtnText: { fontSize: 14, fontWeight: "700", color: "#FFF" },
+
+  // Hero
+  imageContainer: { width, position: "relative" },
+  image: { width },
+  topGradient: { position: "absolute", top: 0, left: 0, right: 0, height: 120 },
+  bottomGradient: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    height: 100,
+    height: 160,
   },
-  content: {
-    flex: 1,
-  },
-  header: {
-    padding: theme.spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-  },
-  headerTop: {
-    marginBottom: theme.spacing.md,
-  },
-  titleContainer: {
+  imageTopActions: {
+    position: "absolute",
+    left: 0,
+    right: 0,
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: theme.spacing.sm,
+    paddingHorizontal: 16,
   },
-  name: {
-    fontSize: 28,
-    fontWeight: "bold",
-    color: theme.colors.text,
+  imageTopRight: { flexDirection: "row", gap: 8 },
+  imageActionBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+  },
+  imageCounter: {
+    position: "absolute",
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+  },
+  imageCounterText: { fontSize: 11, color: "#FFF", fontWeight: "600" },
+  imageIndicator: {
+    position: "absolute",
+    bottom: 72,
+    alignSelf: "center",
+    flexDirection: "row",
+    gap: 5,
+  },
+  indicatorDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: "rgba(255,255,255,0.4)",
+  },
+  indicatorDotActive: { backgroundColor: "#FFF", width: 18 },
+  heroInfo: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 16,
+    paddingBottom: 18,
+  },
+  heroInfoTop: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    marginBottom: 6,
+  },
+  heroName: {
+    fontSize: 24,
+    fontWeight: "900",
+    color: "#FFF",
     flex: 1,
-    marginRight: theme.spacing.md,
+    marginRight: 10,
+    textShadowColor: "rgba(0,0,0,0.5)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
+    letterSpacing: -0.5,
+  },
+  heroSubline: {
+    fontSize: 13,
+    color: "rgba(255,255,255,0.8)",
+    fontWeight: "500",
+  },
+  statusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+    gap: 5,
+    flexShrink: 0,
   },
   openBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#D1FAE5",
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: 4,
-    borderRadius: 12,
-    gap: 4,
-  },
-  openDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "#10B981",
-  },
-  openText: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: "600",
-    color: "#059669",
+    backgroundColor: "rgba(16,185,129,0.25)",
+    borderWidth: 1,
+    borderColor: "rgba(16,185,129,0.6)",
   },
   closedBadge: {
-    backgroundColor: "#FEE2E2",
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: 4,
-    borderRadius: 12,
+    backgroundColor: "rgba(220,38,38,0.25)",
+    borderWidth: 1,
+    borderColor: "rgba(220,38,38,0.6)",
   },
-  closedText: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: "600",
-    color: "#DC2626",
-  },
-  ratingContainer: {
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  openDot: { backgroundColor: "#10B981" },
+  closedDot: { backgroundColor: "#EF4444" },
+  statusText: { fontSize: 11, fontWeight: "700" },
+  openText: { color: "#6EE7B7" },
+  closedText: { color: "#FCA5A5" },
+
+  // Stats
+  statsRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: theme.spacing.sm,
-    gap: theme.spacing.sm,
+    backgroundColor: "#FFF",
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderBottomWidth: 6,
+    borderBottomColor: "#F5F6F8",
   },
+  statItem: { flex: 1, alignItems: "center", gap: 6 },
+  statDivider: { width: 1, height: 34, backgroundColor: "#EEF0F4" },
   ratingBadge: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#10B981",
-    paddingHorizontal: theme.spacing.sm,
+    paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 6,
-    gap: 4,
+    borderRadius: 8,
+    gap: 3,
   },
-  ratingText: {
-    fontSize: theme.fontSize.sm,
-    fontWeight: "700",
-    color: "#FFFFFF",
-  },
-  reviewsText: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textSecondary,
-  },
-  cuisineContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: theme.spacing.xs,
-    marginBottom: theme.spacing.md,
-  },
-  cuisineTag: {
-    backgroundColor: theme.colors.surface,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: 6,
-    borderRadius: 6,
-  },
-  cuisineTagText: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.text,
+  ratingText: { fontSize: 13, fontWeight: "800", color: "#FFF" },
+  statLabel: {
+    fontSize: 11,
+    color: "#8A95A3",
     fontWeight: "500",
+    textAlign: "center",
   },
-  priceTag: {
-    backgroundColor: `${theme.colors.primary}15`,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: 6,
-    borderRadius: 6,
+  priceRangeValue: { fontSize: 16, fontWeight: "800", color: "#0F1B2D" },
+
+  // Quick Actions
+  quickActions: {
+    flexDirection: "row",
+    backgroundColor: "#FFF",
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    borderBottomWidth: 6,
+    borderBottomColor: "#F5F6F8",
   },
-  priceTagText: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.primary,
-    fontWeight: "700",
+  quickActionBtn: { flex: 1, alignItems: "center", gap: 6 },
+  quickActionIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
   },
-  description: {
-    fontSize: theme.fontSize.md,
-    color: theme.colors.textSecondary,
-    lineHeight: 22,
-  },
+  quickActionText: { fontSize: 11, fontWeight: "600", color: "#0F1B2D" },
+
+  // Sections
+  content: { flex: 1 },
   section: {
-    padding: theme.spacing.lg,
+    backgroundColor: "#FFF",
+    padding: 16,
+    marginBottom: 8,
+    borderTopWidth: 1,
     borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    borderColor: "#EEF0F4",
   },
-  sectionTitle: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: "700",
-    color: theme.colors.text,
-    marginBottom: theme.spacing.md,
+  sectionTitleLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 14,
   },
+  sectionDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#FF5A5F",
+  },
+  sectionTitleText: { fontSize: 15, fontWeight: "700", color: "#0F1B2D" },
+  sectionTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 14,
+  },
+  hoursToggle: { flexDirection: "row", alignItems: "center", gap: 3 },
+  hoursToggleText: { fontSize: 13, color: "#FF5A5F", fontWeight: "600" },
+  description: { fontSize: 14, color: "#8A95A3", lineHeight: 22 },
+
+  // Location
   locationCard: {
     flexDirection: "row",
-    gap: theme.spacing.md,
-    marginBottom: theme.spacing.md,
+    gap: 12,
+    marginBottom: 14,
+    alignItems: "flex-start",
   },
-  locationInfo: {
-    flex: 1,
+  locationIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 13,
+    justifyContent: "center",
+    alignItems: "center",
+    flexShrink: 0,
   },
+  locationInfo: { flex: 1, justifyContent: "center" },
   locationAddress: {
-    fontSize: theme.fontSize.md,
-    fontWeight: "600",
-    color: theme.colors.text,
-    marginBottom: 4,
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#0F1B2D",
+    marginBottom: 3,
   },
-  locationCity: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textSecondary,
-    marginBottom: 4,
-  },
-  locationLandmark: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textSecondary,
-    fontStyle: "italic",
-  },
-  directionsButton: {
+  locationCity: { fontSize: 13, color: "#8A95A3", marginBottom: 2 },
+  locationLandmark: { fontSize: 12, color: "#8A95A3", fontStyle: "italic" },
+  directionsBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: theme.spacing.sm,
-    paddingVertical: theme.spacing.sm,
-    borderWidth: 1,
-    borderColor: theme.colors.primary,
-    borderRadius: theme.borderRadius.md,
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "#FF5A5F30",
+    backgroundColor: "#FFF0F0",
   },
-  directionsText: {
-    fontSize: theme.fontSize.md,
-    fontWeight: "600",
-    color: theme.colors.primary,
+  directionsBtnText: { fontSize: 14, fontWeight: "700", color: "#FF5A5F" },
+
+  // Contact
+  contactCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#EEF0F4",
+    overflow: "hidden",
   },
   contactRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing.md,
-    marginBottom: theme.spacing.sm,
+    gap: 12,
+    padding: 14,
+    backgroundColor: "#FFF",
   },
-  contactText: {
-    fontSize: theme.fontSize.md,
-    color: theme.colors.text,
+  contactRowBorder: { borderTopWidth: 1, borderTopColor: "#EEF0F4" },
+  contactIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 11,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  contactInfo: { flex: 1 },
+  contactLabel: {
+    fontSize: 11,
+    color: "#8A95A3",
+    fontWeight: "500",
+    marginBottom: 2,
+  },
+  contactValue: { fontSize: 14, fontWeight: "600", color: "#0F1B2D" },
+  contactActionBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 10,
+  },
+  contactActionText: { fontSize: 12, fontWeight: "700", color: "#FFF" },
+
+  // Hours
+  todayCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFF8F8",
+    padding: 14,
+    borderRadius: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "#FF5A5F20",
+    gap: 10,
+  },
+  todayPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    flexShrink: 0,
+  },
+  todayPillText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#FFF",
+    letterSpacing: 0.3,
+  },
+  todayDayText: { fontSize: 14, fontWeight: "700", color: "#0F1B2D" },
+  closedChip: {
+    backgroundColor: "#FEF2F2",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  closedChipText: { fontSize: 12, fontWeight: "700", color: "#EF4444" },
+  openTimeWrap: { flexDirection: "row", alignItems: "center" },
+  openTimeText: { fontSize: 14, fontWeight: "600", color: "#10B981" },
+  hoursCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#EEF0F4",
+    overflow: "hidden",
   },
   hoursRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: theme.spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.surface,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
   },
-  dayText: {
-    fontSize: theme.fontSize.md,
-    fontWeight: "500",
-    color: theme.colors.text,
-    textTransform: "capitalize",
-  },
-  hoursText: {
-    fontSize: theme.fontSize.md,
-    color: theme.colors.textSecondary,
-  },
-  closedHoursText: {
-    fontSize: theme.fontSize.md,
-    color: theme.colors.error,
-    fontWeight: "500",
-  },
-  amenitiesGrid: {
-    gap: theme.spacing.md,
-  },
+  hoursRowBorder: { borderBottomWidth: 1, borderBottomColor: "#F5F6F8" },
+  hoursRowToday: { backgroundColor: "#FFF8F8" },
+  dayText: { fontSize: 14, fontWeight: "500", color: "#0F1B2D" },
+  dayTextToday: { fontWeight: "700", color: "#FF5A5F" },
+  hoursTimeText: { fontSize: 14, color: "#8A95A3" },
+  hoursTimeTextToday: { color: "#FF5A5F", fontWeight: "600" },
+  closedHoursText: { fontSize: 14, color: "#EF4444", fontWeight: "600" },
+
+  // Amenities
+  amenitiesGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   amenityItem: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing.sm,
+    gap: 8,
+    width: "47%",
   },
-  amenityText: {
-    fontSize: theme.fontSize.md,
-    color: theme.colors.text,
+  amenityIconWrap: {
+    width: 24,
+    height: 24,
+    borderRadius: 7,
+    backgroundColor: "#FFF0F0",
+    justifyContent: "center",
+    alignItems: "center",
   },
-  featuresContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: theme.spacing.sm,
-  },
+  amenityText: { fontSize: 13, color: "#0F1B2D", flex: 1 },
+
+  // Features
+  tagsWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   featureTag: {
-    backgroundColor: `${theme.colors.primary}10`,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    borderRadius: theme.borderRadius.md,
+    backgroundColor: "#FFF0F0",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: `${theme.colors.primary}30`,
+    borderColor: "#FF5A5F25",
   },
-  featureText: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.primary,
-    fontWeight: "500",
-  },
+  featureTagText: { fontSize: 12, color: "#FF5A5F", fontWeight: "600" },
+
+  // Booking Info
   bookingInfoCard: {
-    backgroundColor: theme.colors.surface,
-    padding: theme.spacing.md,
-    borderRadius: theme.borderRadius.lg,
-    gap: theme.spacing.sm,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#EEF0F4",
+    overflow: "hidden",
   },
   bookingInfoRow: {
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
+    padding: 14,
+    backgroundColor: "#FFF",
+  },
+  bookingInfoRowBorder: { borderTopWidth: 1, borderTopColor: "#EEF0F4" },
+  bookingInfoLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    flex: 1,
+  },
+  bookingInfoIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 11,
+    justifyContent: "center",
     alignItems: "center",
   },
-  bookingInfoLabel: {
-    fontSize: theme.fontSize.md,
-    color: theme.colors.textSecondary,
+  bookingInfoLabel: { fontSize: 14, fontWeight: "600", color: "#0F1B2D" },
+  bookingInfoSub: { fontSize: 11, color: "#8A95A3", marginTop: 1 },
+  bookingInfoValue: { fontSize: 15, fontWeight: "800", color: "#0F1B2D" },
+  bookingInfoPer: { fontSize: 12, fontWeight: "500", color: "#8A95A3" },
+  freeBadge: {
+    backgroundColor: "#ECFDF5",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
   },
-  bookingInfoValue: {
-    fontSize: theme.fontSize.md,
-    fontWeight: "600",
-    color: theme.colors.text,
+  freeBadgeText: { fontSize: 13, fontWeight: "800", color: "#059669" },
+  nonRefundBadge: {
+    backgroundColor: "#FEF2F2",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
   },
-  bookingInfoValueFree: {
-    fontSize: theme.fontSize.md,
-    fontWeight: "700",
-    color: "#10B981",
-  },
+  nonRefundBadgeText: { fontSize: 11, fontWeight: "700", color: "#EF4444" },
+
+  // Bottom Bar
   bottomBar: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: theme.spacing.lg,
-    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    backgroundColor: "#FFF",
     borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
+    borderTopColor: "#EEF0F4",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 10,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 12,
   },
-  priceInfo: {
-    flex: 1,
-  },
+  priceInfo: { flex: 1 },
   priceLabel: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textSecondary,
+    fontSize: 11,
+    color: "#8A95A3",
+    fontWeight: "500",
     marginBottom: 2,
   },
+  priceRow: { flexDirection: "row", alignItems: "baseline", gap: 2 },
   priceValue: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: "700",
-    color: theme.colors.text,
+    fontSize: 24,
+    fontWeight: "900",
+    color: "#0F1B2D",
+    letterSpacing: -0.5,
   },
-  freePriceText: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: "700",
-    color: "#10B981",
-  },
-  bookButton: {
-    borderRadius: theme.borderRadius.md,
+  pricePer: { fontSize: 13, fontWeight: "500", color: "#8A95A3" },
+  freePriceText: { fontSize: 24, fontWeight: "900", color: "#10B981" },
+  bookBtnWrap: {
+    borderRadius: 16,
     overflow: "hidden",
-    shadowColor: theme.colors.primary,
+    shadowColor: "#FF5A5F",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 6,
   },
-  bookButtonGradient: {
+  bookBtnGradient: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: theme.spacing.xl,
-    paddingVertical: theme.spacing.md,
-    gap: theme.spacing.sm,
+    gap: 8,
+    paddingHorizontal: 24,
+    paddingVertical: 15,
   },
-  bookButtonText: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: "700",
-    color: "#FFFFFF",
-  },
+  bookBtnText: { fontSize: 15, fontWeight: "800", color: "#FFF" },
 });

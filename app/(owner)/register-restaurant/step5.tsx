@@ -8,10 +8,15 @@ import {
   Image,
   Alert,
   ActivityIndicator,
+  StatusBar,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { MaterialIcons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import * as ImagePicker from "expo-image-picker";
 import {
   collection,
@@ -23,189 +28,171 @@ import {
 } from "firebase/firestore";
 import { db } from "../../../config/firebase";
 import { useAuth } from "../../../contexts/AuthContext";
-import { theme } from "../../../constants/theme";
 
 const CLOUD_NAME = "dzbazi9fw";
 const UPLOAD_PRESET = "Restaurants_Image";
+
+const AMENITIES = [
+  { label: "WiFi", icon: "wifi" },
+  { label: "Parking", icon: "local-parking" },
+  { label: "AC", icon: "ac-unit" },
+  { label: "Bar", icon: "local-bar" },
+  { label: "Live Music", icon: "music-note" },
+  { label: "Rooftop", icon: "roofing" },
+  { label: "Valet", icon: "directions-car" },
+  { label: "Pet Friendly", icon: "pets" },
+  { label: "Wheelchair", icon: "accessible" },
+  { label: "Takeaway", icon: "takeout-dining" },
+  { label: "Delivery", icon: "delivery-dining" },
+  { label: "CCTV", icon: "videocam" },
+];
+
+const FEATURES = [
+  { label: "Family Friendly", icon: "family-restroom" },
+  { label: "Romantic", icon: "favorite" },
+  { label: "Business Dining", icon: "business-center" },
+  { label: "Casual Dining", icon: "restaurant" },
+  { label: "Fine Dining", icon: "wine-bar" },
+  { label: "Buffet", icon: "set-meal" },
+  { label: "Outdoor Seating", icon: "deck" },
+  { label: "Private Events", icon: "celebration" },
+  { label: "Halal", icon: "cruelty-free" },
+  { label: "Vegetarian Friendly", icon: "eco" },
+  { label: "Late Night", icon: "nights-stay" },
+  { label: "Happy Hours", icon: "local-drink" },
+];
+
+const uploadToCloudinary = async (uri: string): Promise<string | null> => {
+  try {
+    const data = new FormData();
+    data.append("file", { uri, type: "image/jpeg", name: "upload.jpg" } as any);
+    data.append("upload_preset", UPLOAD_PRESET);
+    data.append("folder", "restaurants");
+    const res = await fetch(
+      `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,
+      { method: "POST", body: data },
+    );
+    const result = await res.json();
+    return result.secure_url || null;
+  } catch {
+    return null;
+  }
+};
 
 export default function RegisterStep5() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const { user, userData } = useAuth();
+  const insets = useSafeAreaInsets();
 
   const [coverImage, setCoverImage] = useState<string | null>(null);
-  const [galleryImages, setGalleryImages] = useState<string[]>([]);
+  const [gallery, setGallery] = useState<string[]>([]);
+  const [selectedAmenities, setSelectedAmenities] = useState<string[]>([]);
+  const [selectedFeatures, setSelectedFeatures] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState("");
+  const [progress, setProgress] = useState("");
 
-  // ================================
-  // 📤 CLOUDINARY UPLOAD FUNCTION
-  // ================================
-  const uploadToCloudinary = async (uri: string): Promise<string | null> => {
-    try {
-      const data = new FormData();
-      data.append("file", {
-        uri,
-        type: "image/jpeg",
-        name: "upload.jpg",
-      } as any);
-      data.append("upload_preset", UPLOAD_PRESET);
-      data.append("folder", "restaurants");
+  const toggle = (
+    item: string,
+    list: string[],
+    setList: (v: string[]) => void,
+  ) =>
+    setList(
+      list.includes(item) ? list.filter((i) => i !== item) : [...list, item],
+    );
 
-      const res = await fetch(
-        `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,
-        {
-          method: "POST",
-          body: data,
-        }
-      );
-
-      const result = await res.json();
-      if (result.secure_url) return result.secure_url;
-      console.log("Cloudinary upload failed:", result);
-      return null;
-    } catch (error) {
-      console.error("Cloudinary upload error:", error);
-      return null;
-    }
-  };
-
-  // ================================
-  // 📸 PICK IMAGES
-  // ================================
-  const pickCoverImage = async () => {
+  const pickCover = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission Denied", "Camera roll permission is required");
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
+    if (status !== "granted")
+      return Alert.alert("Permission Denied", "Camera roll access required");
+    const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [16, 9],
       quality: 0.8,
     });
-
-    if (!result.canceled) {
-      setCoverImage(result.assets[0].uri);
-    }
+    if (!res.canceled) setCoverImage(res.assets[0].uri);
   };
 
-  const pickGalleryImages = async () => {
-    if (galleryImages.length >= 10) {
-      Alert.alert("Limit Reached", "You can upload up to 10 gallery images");
-      return;
-    }
-
+  const pickGallery = async () => {
+    if (gallery.length >= 10)
+      return Alert.alert("Limit Reached", "Maximum 10 gallery images");
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission Denied", "Camera roll permission is required");
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
+    if (status !== "granted")
+      return Alert.alert("Permission Denied", "Camera roll access required");
+    const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsMultipleSelection: true,
       quality: 0.7,
     });
-
-    if (!result.canceled) {
-      const newImages = result.assets.map((asset) => asset.uri);
-      const total = galleryImages.length + newImages.length;
-
-      if (total > 10) {
-        Alert.alert(
-          "Limit Exceeded",
-          "You can only upload up to 10 gallery images"
-        );
-        return;
-      }
-
-      setGalleryImages([...galleryImages, ...newImages]);
+    if (!res.canceled) {
+      const newUris = res.assets.map((a) => a.uri);
+      if (gallery.length + newUris.length > 10)
+        return Alert.alert("Limit Exceeded", "Maximum 10 gallery images total");
+      setGallery((prev) => [...prev, ...newUris]);
     }
   };
 
-  const removeGalleryImage = (index: number) => {
-    setGalleryImages(galleryImages.filter((_, i) => i !== index));
-  };
-
-  // ================================
-  // 🚀 SUBMIT HANDLER
-  // ================================
   const handleSubmit = async () => {
-    if (!coverImage) {
-      Alert.alert("Error", "Please upload a cover image");
-      return;
-    }
+    if (!coverImage)
+      return Alert.alert("Required", "Please upload a cover image");
+    if (!user) return Alert.alert("Error", "You must be logged in");
 
     setUploading(true);
-    setUploadProgress("Uploading images...");
-
     try {
-      const restaurantId = `rest_${Date.now()}`;
+      setProgress("Uploading cover image…");
+      const coverUrl = await uploadToCloudinary(coverImage);
+      if (!coverUrl) throw new Error("Cover image upload failed");
 
-      // Upload cover image
-      setUploadProgress("Uploading cover image...");
-      const coverImageUrl = await uploadToCloudinary(coverImage);
-      if (!coverImageUrl) throw new Error("Cover upload failed");
-
-      // Upload gallery images
       const galleryUrls: string[] = [];
-      for (let i = 0; i < galleryImages.length; i++) {
-        setUploadProgress(
-          `Uploading gallery image ${i + 1}/${galleryImages.length}...`
-        );
-        const url = await uploadToCloudinary(galleryImages[i]);
+      for (let i = 0; i < gallery.length; i++) {
+        setProgress(`Uploading gallery ${i + 1}/${gallery.length}…`);
+        const url = await uploadToCloudinary(gallery[i]);
         if (url) galleryUrls.push(url);
       }
 
-      setUploadProgress("Creating restaurant...");
-
-      // Parse params
+      setProgress("Creating restaurant…");
       const operatingHours = JSON.parse(params.operatingHours as string);
       const tables = JSON.parse(params.tables as string);
-      const cuisineArray = (params.cuisine as string).split(",");
-
+      const cuisineArray = (params.cuisine as string)
+        .split(",")
+        .filter(Boolean);
+      const bookingFeePerPerson =
+        parseInt(params.bookingFeePerPerson as string) || 299;
       const searchKeywords = [
         params.name?.toString().toLowerCase(),
-        ...cuisineArray.map((c) => c.toLowerCase()),
+        ...cuisineArray.map((c: string) => c.toLowerCase()),
         params.city?.toString().toLowerCase(),
       ].filter(Boolean);
 
       const restaurantData = {
-        ownerId: user?.uid,
-        ownerName: userData?.fullName,
-        ownerContact: userData?.phoneNumber,
-        name: params.name,
-        description: params.description,
+        ownerId: user.uid,
+        ownerName: userData?.fullName ?? "",
+        ownerContact: userData?.phoneNumber ?? "",
+        name: params.name ?? "",
+        description: params.description ?? "",
         cuisine: cuisineArray,
-        priceRange: params.priceRange,
         address: {
-          street: params.street,
-          city: params.city,
-          state: params.state,
-          pincode: params.pincode,
-          landmark: params.landmark || "",
+          street: params.street ?? "",
+          city: params.city ?? "",
+          state: params.state ?? "",
+          pincode: params.pincode ?? "",
+          landmark: params.landmark ?? "",
         },
         coordinates: {
           latitude: parseFloat(params.latitude as string),
           longitude: parseFloat(params.longitude as string),
         },
-        phone: params.phone,
-        email: params.email || "",
-        website: params.website || "",
+        phone: params.phone ?? "",
+        email: params.email ?? "",
+        website: params.website ?? "",
         operatingHours,
         tables,
         totalCapacity: parseInt(params.totalCapacity as string),
-        images: {
-          coverImage: coverImageUrl,
-          gallery: galleryUrls,
-          menuImages: [],
-        },
-        amenities: ["WiFi", "Parking", "AC"],
-        features: ["Family Friendly", "Casual Dining"],
-        bookingFeePerPerson: 50,
+        images: { coverImage: coverUrl, gallery: galleryUrls, menuImages: [] },
+        amenities: selectedAmenities,
+        features: selectedFeatures,
+        bookingFeePerPerson,
         cancellationPolicy: {
           allowCancellation: true,
           isRefundable: false,
@@ -222,162 +209,319 @@ export default function RegisterStep5() {
 
       const docRef = await addDoc(
         collection(db, "restaurants"),
-        restaurantData
+        restaurantData,
       );
+      await updateDoc(docRef, { id: docRef.id });
+      await updateDoc(doc(db, "users", user.uid), {
+        ownedRestaurants: arrayUnion(docRef.id),
+      });
 
-      if (user) {
-        await updateDoc(doc(db, "users", user.uid), {
-          ownedRestaurants: arrayUnion(docRef.id),
-        });
-      }
-
-      setUploading(false);
-      setUploadProgress("");
       Alert.alert(
-        "Success 🎉",
-        "Your restaurant has been submitted for approval.",
+        "Submitted 🎉",
+        "Your restaurant is pending admin approval.",
         [
           {
             text: "OK",
             onPress: () => router.replace("/(owner)/my-restaurants"),
           },
-        ]
+        ],
       );
-    } catch (error) {
-      console.error("Error submitting restaurant:", error);
-      Alert.alert("Error", "Failed to submit restaurant. Please try again.");
+    } catch (err: any) {
+      Alert.alert(
+        "Error",
+        err.message || "Submission failed. Please try again.",
+      );
+    } finally {
       setUploading(false);
-      setUploadProgress("");
+      setProgress("");
     }
   };
 
-  // ================================
-  // 🖼️ UI
-  // ================================
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.backButton}
-        >
-          <MaterialIcons
-            name="arrow-back"
-            size={24}
-            color={theme.colors.text}
-          />
-        </TouchableOpacity>
-        <View style={styles.headerTitleContainer}>
-          <Text style={styles.headerTitle}>Add Restaurant</Text>
-          <Text style={styles.headerSubtitle}>Step 5 of 5 - Images</Text>
+    <SafeAreaView style={styles.container} edges={["bottom"]}>
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor="transparent"
+        translucent
+      />
+
+      <LinearGradient
+        colors={["#1A0A2E", "#3D1A6E", "#6B2FA0"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[styles.header, { paddingTop: insets.top + 8 }]}
+      >
+        <View style={styles.orb1} />
+        <View style={styles.orb2} />
+        <View style={styles.headerRow}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.backBtn}
+          >
+            <MaterialIcons name="arrow-back" size={22} color="#FFF" />
+          </TouchableOpacity>
+          <View style={styles.headerCenter}>
+            <Text style={styles.headerTitle}>Add Restaurant</Text>
+            <Text style={styles.headerSub}>
+              Step 5 of 5 — Finishing Touches
+            </Text>
+          </View>
+          <View style={{ width: 38 }} />
         </View>
-        <View style={{ width: 24 }} />
-      </View>
+        <View style={styles.progressTrack}>
+          <LinearGradient
+            colors={["#FF5A5F", "#FF9F43"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={[styles.progressFill, { width: "100%" }]}
+          />
+        </View>
+        <View style={styles.stepDots}>
+          {[1, 2, 3, 4, 5].map((i) => (
+            <View
+              key={i}
+              style={[
+                styles.dot,
+                styles.dotActive,
+                i === 5 && styles.dotCurrent,
+              ]}
+            />
+          ))}
+        </View>
+      </LinearGradient>
 
-      <View style={styles.progressContainer}>
-        <View style={[styles.progressBar, { width: "100%" }]} />
-      </View>
+      <ScrollView
+        style={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
+        {/* Amenities */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <View style={styles.cardIconWrap}>
+              <MaterialIcons name="star" size={16} color="#FF9F43" />
+            </View>
+            <View>
+              <Text style={styles.cardTitle}>
+                Amenities <Text style={styles.opt}>(Optional)</Text>
+              </Text>
+              <Text style={styles.cardSub}>
+                {selectedAmenities.length} selected
+              </Text>
+            </View>
+          </View>
+          <View style={styles.chipGrid}>
+            {AMENITIES.map(({ label, icon }) => {
+              const sel = selectedAmenities.includes(label);
+              return (
+                <TouchableOpacity
+                  key={label}
+                  style={[styles.chip, sel && styles.chipSel]}
+                  onPress={() =>
+                    toggle(label, selectedAmenities, setSelectedAmenities)
+                  }
+                  activeOpacity={0.75}
+                >
+                  <MaterialIcons
+                    name={icon as any}
+                    size={14}
+                    color={sel ? "#FFF" : "#8A95A3"}
+                  />
+                  <Text style={[styles.chipText, sel && styles.chipTextSel]}>
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* COVER IMAGE */}
-        <View style={styles.section}>
-          <Text style={styles.label}>
-            Cover Image <Text style={styles.required}>*</Text>
-          </Text>
-          <Text style={styles.helperText}>
-            Main image for your restaurant (16:9 ratio recommended)
-          </Text>
+        {/* Dining Style */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <View
+              style={[
+                styles.cardIconWrap,
+                { backgroundColor: "rgba(168,85,247,0.1)" },
+              ]}
+            >
+              <MaterialIcons name="local-dining" size={16} color="#A855F7" />
+            </View>
+            <View>
+              <Text style={styles.cardTitle}>
+                Dining Style <Text style={styles.opt}>(Optional)</Text>
+              </Text>
+              <Text style={styles.cardSub}>
+                {selectedFeatures.length} selected
+              </Text>
+            </View>
+          </View>
+          <View style={styles.chipGrid}>
+            {FEATURES.map(({ label, icon }) => {
+              const sel = selectedFeatures.includes(label);
+              return (
+                <TouchableOpacity
+                  key={label}
+                  style={[styles.chip, sel && styles.chipSelPurple]}
+                  onPress={() =>
+                    toggle(label, selectedFeatures, setSelectedFeatures)
+                  }
+                  activeOpacity={0.75}
+                >
+                  <MaterialIcons
+                    name={icon as any}
+                    size={14}
+                    color={sel ? "#FFF" : "#8A95A3"}
+                  />
+                  <Text style={[styles.chipText, sel && styles.chipTextSel]}>
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
 
+        {/* Cover Image */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <View
+              style={[
+                styles.cardIconWrap,
+                { backgroundColor: "rgba(255,159,67,0.1)" },
+              ]}
+            >
+              <MaterialIcons name="image" size={16} color="#FF9F43" />
+            </View>
+            <View>
+              <Text style={styles.cardTitle}>
+                Cover Image <Text style={styles.req}>*</Text>
+              </Text>
+              <Text style={styles.cardSub}>16:9 ratio recommended</Text>
+            </View>
+          </View>
           {coverImage ? (
-            <View style={styles.coverImageContainer}>
-              <Image source={{ uri: coverImage }} style={styles.coverImage} />
+            <View style={styles.coverWrap}>
+              <Image source={{ uri: coverImage }} style={styles.coverImg} />
               <TouchableOpacity
-                style={styles.removeImageButton}
+                style={styles.removeBtn}
                 onPress={() => setCoverImage(null)}
               >
-                <MaterialIcons name="close" size={20} color="#FFFFFF" />
+                <MaterialIcons name="close" size={16} color="#FFF" />
               </TouchableOpacity>
+              <View style={styles.coverBadge}>
+                <MaterialIcons name="check" size={12} color="#FFF" />
+                <Text style={styles.coverBadgeText}>Cover</Text>
+              </View>
             </View>
           ) : (
             <TouchableOpacity
-              style={styles.uploadButton}
-              onPress={pickCoverImage}
+              onPress={pickCover}
+              activeOpacity={0.8}
+              style={styles.uploadZone}
             >
-              <MaterialIcons
-                name="add-photo-alternate"
-                size={48}
-                color={theme.colors.primary}
-              />
-              <Text style={styles.uploadButtonText}>Upload Cover Image</Text>
+              <View style={styles.uploadIcon}>
+                <MaterialIcons
+                  name="add-photo-alternate"
+                  size={32}
+                  color="#6B2FA0"
+                />
+              </View>
+              <Text style={styles.uploadTitle}>Tap to upload</Text>
+              <Text style={styles.uploadSub}>
+                JPEG or PNG, 16:9 recommended
+              </Text>
             </TouchableOpacity>
           )}
         </View>
 
-        {/* GALLERY IMAGES */}
-        <View style={styles.section}>
-          <Text style={styles.label}>Gallery Images (Optional)</Text>
-          <Text style={styles.helperText}>
-            Upload up to 10 images ({galleryImages.length}/10)
-          </Text>
-
+        {/* Gallery */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <View
+              style={[
+                styles.cardIconWrap,
+                { backgroundColor: "rgba(168,85,247,0.1)" },
+              ]}
+            >
+              <MaterialIcons name="photo-library" size={16} color="#A855F7" />
+            </View>
+            <View>
+              <Text style={styles.cardTitle}>
+                Gallery <Text style={styles.opt}>(Optional)</Text>
+              </Text>
+              <Text style={styles.cardSub}>{gallery.length}/10 images</Text>
+            </View>
+          </View>
           <View style={styles.galleryGrid}>
-            {galleryImages.map((uri, index) => (
-              <View key={index} style={styles.galleryImageContainer}>
-                <Image source={{ uri }} style={styles.galleryImage} />
+            {gallery.map((uri, i) => (
+              <View key={i} style={styles.galleryItem}>
+                <Image source={{ uri }} style={styles.galleryImg} />
                 <TouchableOpacity
-                  style={styles.removeGalleryImageButton}
-                  onPress={() => removeGalleryImage(index)}
+                  style={styles.galleryRemove}
+                  onPress={() =>
+                    setGallery((g) => g.filter((_, idx) => idx !== i))
+                  }
                 >
-                  <MaterialIcons name="close" size={16} color="#FFFFFF" />
+                  <MaterialIcons name="close" size={12} color="#FFF" />
                 </TouchableOpacity>
               </View>
             ))}
-
-            {galleryImages.length < 10 && (
+            {gallery.length < 10 && (
               <TouchableOpacity
-                style={styles.addGalleryButton}
-                onPress={pickGalleryImages}
+                onPress={pickGallery}
+                activeOpacity={0.8}
+                style={styles.galleryAdd}
               >
-                <MaterialIcons
-                  name="add"
-                  size={32}
-                  color={theme.colors.primary}
-                />
+                <MaterialIcons name="add" size={26} color="#8A95A3" />
               </TouchableOpacity>
             )}
           </View>
         </View>
 
-        {/* INFO CARD */}
+        {/* Info */}
         <View style={styles.infoCard}>
-          <MaterialIcons name="info" size={24} color={theme.colors.primary} />
-          <Text style={styles.infoText}>
-            Your restaurant will be submitted for admin approval. You will be
-            notified once it's reviewed.
-          </Text>
+          <LinearGradient
+            colors={["rgba(107,47,160,0.08)", "rgba(168,85,247,0.05)"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.infoInner}
+          >
+            <View style={styles.infoIcon}>
+              <MaterialIcons name="info-outline" size={18} color="#6B2FA0" />
+            </View>
+            <Text style={styles.infoText}>
+              Your restaurant will be reviewed by our team. You'll be notified
+              once approved.
+            </Text>
+          </LinearGradient>
         </View>
 
-        <View style={{ height: 100 }} />
+        <View style={{ height: 32 }} />
       </ScrollView>
 
-      {/* BOTTOM BAR */}
       <View style={styles.bottomBar}>
         {uploading ? (
-          <View style={styles.uploadingContainer}>
-            <ActivityIndicator size="small" color={theme.colors.primary} />
-            <Text style={styles.uploadingText}>{uploadProgress}</Text>
+          <View style={styles.uploadingRow}>
+            <ActivityIndicator size="small" color="#6B2FA0" />
+            <Text style={styles.uploadingText}>{progress}</Text>
           </View>
         ) : (
           <TouchableOpacity
-            style={[
-              styles.submitButton,
-              !coverImage && styles.submitButtonDisabled,
-            ]}
             onPress={handleSubmit}
+            activeOpacity={0.85}
             disabled={!coverImage}
+            style={[styles.ctaWrap, !coverImage && { opacity: 0.5 }]}
           >
-            <MaterialIcons name="check-circle" size={20} color="#FFFFFF" />
-            <Text style={styles.submitButtonText}>Submit for Approval</Text>
+            <LinearGradient
+              colors={["#6B2FA0", "#FF5A5F"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.cta}
+            >
+              <MaterialIcons name="check-circle" size={20} color="#FFF" />
+              <Text style={styles.ctaText}>Submit for Approval</Text>
+            </LinearGradient>
           </TouchableOpacity>
         )}
       </View>
@@ -385,166 +529,257 @@ export default function RegisterStep5() {
   );
 }
 
-// ✅ STYLES (same as yours)
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#FFFFFF" },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: theme.spacing.lg,
-    paddingVertical: theme.spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-  },
-  backButton: { padding: theme.spacing.xs },
-  headerTitleContainer: { flex: 1, alignItems: "center" },
-  headerTitle: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: "bold",
-    color: theme.colors.text,
-  },
-  headerSubtitle: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textSecondary,
-  },
-  progressContainer: { height: 4, backgroundColor: theme.colors.surface },
-  progressBar: { height: "100%", backgroundColor: theme.colors.primary },
-  content: { flex: 1 },
-  section: {
-    padding: theme.spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-  },
-  label: {
-    fontSize: theme.fontSize.md,
-    fontWeight: "600",
-    color: theme.colors.text,
-  },
-  required: { color: theme.colors.error },
-  helperText: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textSecondary,
-    marginBottom: theme.spacing.md,
-  },
-  coverImageContainer: {
-    position: "relative",
-    width: "100%",
-    aspectRatio: 16 / 9,
-    borderRadius: theme.borderRadius.lg,
-    overflow: "hidden",
-  },
-  coverImage: { width: "100%", height: "100%" },
-  removeImageButton: {
+  container: { flex: 1, backgroundColor: "#F0F2F7" },
+  header: { paddingHorizontal: 16, paddingBottom: 20, overflow: "hidden" },
+  orb1: {
     position: "absolute",
-    top: theme.spacing.sm,
-    right: theme.spacing.sm,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "rgba(0,0,0,0.6)",
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: "rgba(255,90,95,0.15)",
+    top: -40,
+    right: -20,
+  },
+  orb2: {
+    position: "absolute",
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: "rgba(255,159,67,0.1)",
+    top: 10,
+    right: 80,
+  },
+  headerRow: { flexDirection: "row", alignItems: "center", marginBottom: 16 },
+  backBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.12)",
     justifyContent: "center",
     alignItems: "center",
   },
-  uploadButton: {
+  headerCenter: { flex: 1, alignItems: "center" },
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: "800",
+    color: "#FFF",
+    letterSpacing: -0.3,
+  },
+  headerSub: { fontSize: 12, color: "rgba(255,255,255,0.55)", marginTop: 2 },
+  progressTrack: {
+    height: 4,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    borderRadius: 2,
+    marginBottom: 10,
+  },
+  progressFill: { height: "100%", borderRadius: 2 },
+  stepDots: { flexDirection: "row", justifyContent: "center", gap: 6 },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "rgba(255,255,255,0.25)",
+  },
+  dotActive: { backgroundColor: "rgba(255,159,67,0.6)" },
+  dotCurrent: { width: 20, backgroundColor: "#FF9F43" },
+  scroll: { flex: 1 },
+  scrollContent: { padding: 16, gap: 12 },
+  card: {
+    backgroundColor: "#FFF",
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: "#1A0A2E",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    marginBottom: 14,
+  },
+  cardIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    backgroundColor: "rgba(255,159,67,0.1)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 1,
+  },
+  cardTitle: { fontSize: 14, fontWeight: "700", color: "#0F1B2D" },
+  cardSub: { fontSize: 11, color: "#8A95A3", marginTop: 2 },
+  req: { color: "#FF5A5F" },
+  opt: { fontSize: 12, fontWeight: "500", color: "#8A95A3" },
+  chipGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: "#F5F6F8",
+    borderWidth: 1.5,
+    borderColor: "#EEF0F4",
+  },
+  chipSel: {
+    backgroundColor: "#FF9F43",
+    borderColor: "#FF9F43",
+    shadowColor: "#FF9F43",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  chipSelPurple: {
+    backgroundColor: "#6B2FA0",
+    borderColor: "#6B2FA0",
+    shadowColor: "#6B2FA0",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  chipText: { fontSize: 12, fontWeight: "600", color: "#0F1B2D" },
+  chipTextSel: { color: "#FFF", fontWeight: "700" },
+  coverWrap: {
+    position: "relative",
     width: "100%",
     aspectRatio: 16 / 9,
-    borderRadius: theme.borderRadius.lg,
-    borderWidth: 2,
-    borderColor: theme.colors.border,
-    borderStyle: "dashed",
-    backgroundColor: theme.colors.surface,
-    justifyContent: "center",
-    alignItems: "center",
-    gap: theme.spacing.sm,
-  },
-  uploadButtonText: {
-    fontSize: theme.fontSize.md,
-    fontWeight: "600",
-    color: theme.colors.primary,
-  },
-  galleryGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: theme.spacing.sm,
-  },
-  galleryImageContainer: {
-    position: "relative",
-    width: "31%",
-    aspectRatio: 1,
-    borderRadius: theme.borderRadius.md,
+    borderRadius: 12,
     overflow: "hidden",
   },
-  galleryImage: { width: "100%", height: "100%" },
-  removeGalleryImageButton: {
+  coverImg: { width: "100%", height: "100%" },
+  removeBtn: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  coverBadge: {
+    position: "absolute",
+    bottom: 10,
+    left: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(107,47,160,0.85)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  coverBadgeText: { fontSize: 11, fontWeight: "700", color: "#FFF" },
+  uploadZone: {
+    width: "100%",
+    aspectRatio: 16 / 9,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderStyle: "dashed",
+    borderColor: "rgba(107,47,160,0.3)",
+    backgroundColor: "#F8F6FF",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+  },
+  uploadIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 18,
+    backgroundColor: "rgba(107,47,160,0.1)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  uploadTitle: { fontSize: 15, fontWeight: "700", color: "#3D1A6E" },
+  uploadSub: { fontSize: 11, color: "#8A95A3" },
+  galleryGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  galleryItem: {
+    position: "relative",
+    width: "30.5%",
+    aspectRatio: 1,
+    borderRadius: 10,
+    overflow: "hidden",
+  },
+  galleryImg: { width: "100%", height: "100%" },
+  galleryRemove: {
     position: "absolute",
     top: 4,
     right: 4,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: "rgba(0,0,0,0.6)",
+    width: 22,
+    height: 22,
+    borderRadius: 7,
+    backgroundColor: "rgba(0,0,0,0.55)",
     justifyContent: "center",
     alignItems: "center",
   },
-  addGalleryButton: {
-    width: "31%",
+  galleryAdd: {
+    width: "30.5%",
     aspectRatio: 1,
-    borderRadius: theme.borderRadius.md,
+    borderRadius: 10,
     borderWidth: 2,
-    borderColor: theme.colors.border,
     borderStyle: "dashed",
-    backgroundColor: theme.colors.surface,
+    borderColor: "#DDE1EC",
+    backgroundColor: "#F8F9FC",
     justifyContent: "center",
     alignItems: "center",
   },
-  infoCard: {
+  infoCard: { borderRadius: 14, overflow: "hidden" },
+  infoInner: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: theme.spacing.md,
-    margin: theme.spacing.lg,
-    padding: theme.spacing.lg,
-    backgroundColor: `${theme.colors.primary}10`,
-    borderRadius: theme.borderRadius.lg,
+    gap: 12,
+    padding: 14,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: `${theme.colors.primary}30`,
+    borderColor: "rgba(107,47,160,0.15)",
   },
-  infoText: {
-    flex: 1,
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.text,
-    lineHeight: 20,
+  infoIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 9,
+    backgroundColor: "rgba(107,47,160,0.1)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 1,
   },
+  infoText: { flex: 1, fontSize: 13, color: "#3D1A6E", lineHeight: 20 },
   bottomBar: {
-    padding: theme.spacing.lg,
+    padding: 16,
+    backgroundColor: "#FFF",
     borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
-    backgroundColor: "#FFFFFF",
+    borderTopColor: "#EEF0F4",
   },
-  uploadingContainer: {
+  uploadingRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: theme.spacing.md,
-    paddingVertical: theme.spacing.md,
+    gap: 12,
+    paddingVertical: 15,
   },
-  uploadingText: {
-    fontSize: theme.fontSize.md,
-    color: theme.colors.textSecondary,
+  uploadingText: { fontSize: 14, color: "#6B2FA0", fontWeight: "600" },
+  ctaWrap: {
+    borderRadius: 14,
+    overflow: "hidden",
+    shadowColor: "#6B2FA0",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 6,
   },
-  submitButton: {
+  cta: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: theme.spacing.sm,
-    backgroundColor: theme.colors.primary,
-    paddingVertical: theme.spacing.md,
-    borderRadius: theme.borderRadius.md,
+    gap: 8,
+    paddingVertical: 15,
   },
-  submitButtonDisabled: { opacity: 0.5 },
-  submitButtonText: {
-    fontSize: theme.fontSize.md,
-    fontWeight: "700",
-    color: "#FFFFFF",
-  },
+  ctaText: { fontSize: 16, fontWeight: "800", color: "#FFF" },
 });

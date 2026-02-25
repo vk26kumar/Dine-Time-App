@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
   View,
   Text,
@@ -9,76 +9,105 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
+  Animated,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { MaterialIcons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../contexts/AuthContext";
-import { theme } from "../../constants/theme";
 import { getAuth, sendPasswordResetEmail } from "firebase/auth";
 
 export default function LoginScreen() {
   const router = useRouter();
   const { signIn } = useAuth();
+  const insets = useSafeAreaInsets();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [focusedField, setFocusedField] = useState<string | null>(null);
 
-  // 🔹 Forgot password logic
+  const shakeAnim = useRef(new Animated.Value(0)).current;
+
+  const shake = () => {
+    Animated.sequence([
+      Animated.timing(shakeAnim, {
+        toValue: 8,
+        duration: 60,
+        useNativeDriver: true,
+      }),
+      Animated.timing(shakeAnim, {
+        toValue: -8,
+        duration: 60,
+        useNativeDriver: true,
+      }),
+      Animated.timing(shakeAnim, {
+        toValue: 6,
+        duration: 60,
+        useNativeDriver: true,
+      }),
+      Animated.timing(shakeAnim, {
+        toValue: -6,
+        duration: 60,
+        useNativeDriver: true,
+      }),
+      Animated.timing(shakeAnim, {
+        toValue: 0,
+        duration: 60,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
   const handleForgotPassword = async () => {
     if (!email.trim()) {
-      Alert.alert("Missing Email", "Please enter your registered email first.");
+      Alert.alert("Missing Email", "Enter your email above first.");
       return;
     }
-
     try {
-      const auth = getAuth();
-      await sendPasswordResetEmail(auth, email.trim());
+      await sendPasswordResetEmail(getAuth(), email.trim());
       Alert.alert(
-        "Password Reset Email Sent",
-        "Check your inbox for a password reset link."
+        "Reset Link Sent",
+        "Check your inbox for a password reset link.",
       );
     } catch (error: any) {
-      console.error("Forgot password error:", error);
-      if (error.code === "auth/user-not-found") {
-        Alert.alert("Error", "No account found with this email.");
-      } else if (error.code === "auth/invalid-email") {
-        Alert.alert("Error", "Please enter a valid email address.");
-      } else {
-        Alert.alert("Error", error.message);
-      }
+      const msg =
+        error.code === "auth/user-not-found"
+          ? "No account found with this email."
+          : error.code === "auth/invalid-email"
+            ? "Please enter a valid email address."
+            : error.message;
+      Alert.alert("Error", msg);
     }
   };
 
-  const handleEmailLogin = async () => {
-
+  const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert("Error", "Please fill in all fields");
+      shake();
+      Alert.alert("Missing Fields", "Please fill in all fields.");
       return;
     }
-
     setLoading(true);
     try {
       await signIn(email, password);
-
     } catch (error: any) {
-      let errorMessage = "Login failed. Please try again.";
-
-      // Handle specific Firebase errors
-      if (error.code === "auth/user-not-found") {
-        errorMessage = "No account found with this email.";
-      } else if (error.code === "auth/wrong-password") {
-        errorMessage = "Incorrect password.";
-      } else if (error.code === "auth/invalid-email") {
-        errorMessage = "Invalid email address.";
-      } else if (error.code === "auth/too-many-requests") {
-        errorMessage = "Too many failed attempts. Please try again later.";
-      } else if (error.code === "auth/network-request-failed") {
-        errorMessage = "Network error. Please check your connection.";
-      }
-      Alert.alert("Login Failed", error.message);
+      shake();
+      const msg =
+        error.code === "auth/user-not-found"
+          ? "No account found with this email."
+          : error.code === "auth/wrong-password"
+            ? "Incorrect password."
+            : error.code === "auth/invalid-email"
+              ? "Invalid email address."
+              : error.code === "auth/too-many-requests"
+                ? "Too many attempts. Try again later."
+                : error.code === "auth/network-request-failed"
+                  ? "Network error. Check your connection."
+                  : error.message;
+      Alert.alert("Login Failed", msg);
     } finally {
       setLoading(false);
     }
@@ -89,201 +118,295 @@ export default function LoginScreen() {
       style={styles.container}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
-      <KeyboardAwareScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
+      {/* Purple gradient top section */}
+      <LinearGradient
+        colors={["#1A0A2E", "#3D1A6E", "#6B2FA0"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[styles.headerGrad, { paddingTop: insets.top + 16 }]}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={styles.backButton}
-          >
-            <MaterialIcons
-              name="arrow-back"
-              size={24}
-              color={theme.colors.text}
-            />
-          </TouchableOpacity>
-          <Text style={styles.title}>Welcome Back</Text>
-          <Text style={styles.subtitle}>Sign in to continue</Text>
+        <View style={styles.headerOrb} />
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          activeOpacity={0.8}
+        >
+          <MaterialIcons name="arrow-back" size={20} color="#FFFFFF" />
+        </TouchableOpacity>
+        <View style={styles.headerContent}>
+          <View style={styles.logoBadge}>
+            <LinearGradient
+              colors={["#FF5A5F", "#FF9F43"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.logoBadgeGrad}
+            >
+              <MaterialIcons name="restaurant" size={14} color="#FFFFFF" />
+            </LinearGradient>
+          </View>
+          <Text style={styles.headerTitle}>Welcome Back</Text>
+          <Text style={styles.headerSub}>
+            Sign in to continue your dining journey
+          </Text>
         </View>
+        <View style={styles.accentBar}>
+          <View style={[styles.accentSeg, { backgroundColor: "#FF5A5F" }]} />
+          <View style={[styles.accentSeg, { backgroundColor: "#FF9F43" }]} />
+          <View style={[styles.accentSeg, { backgroundColor: "#A855F7" }]} />
+        </View>
+      </LinearGradient>
 
-        {/* Form */}
-        <View style={styles.form}>
-          {/* Email Input */}
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Email</Text>
-            <View style={styles.inputWrapper}>
-              <MaterialIcons
-                name="email"
-                size={20}
-                color={theme.colors.textSecondary}
-              />
+      <KeyboardAwareScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: insets.bottom + 24 },
+        ]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Animated.View style={{ transform: [{ translateX: shakeAnim }] }}>
+          {/* Email */}
+          <View style={styles.fieldWrap}>
+            <Text style={styles.label}>Email Address</Text>
+            <View
+              style={[
+                styles.inputRow,
+                focusedField === "email" && styles.inputRowFocused,
+              ]}
+            >
+              <View style={styles.inputIconWrap}>
+                <MaterialIcons
+                  name="email"
+                  size={16}
+                  color={focusedField === "email" ? "#FF5A5F" : "#8A95A3"}
+                />
+              </View>
               <TextInput
                 style={styles.input}
                 placeholder="your.email@example.com"
+                placeholderTextColor="#C4CAD4"
                 value={email}
                 onChangeText={setEmail}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoComplete="email"
                 editable={!loading}
+                onFocus={() => setFocusedField("email")}
+                onBlur={() => setFocusedField(null)}
               />
             </View>
           </View>
 
-          {/* Password Input */}
-          <View style={styles.inputContainer}>
+          {/* Password */}
+          <View style={styles.fieldWrap}>
             <Text style={styles.label}>Password</Text>
-            <View style={styles.inputWrapper}>
-              <MaterialIcons
-                name="lock"
-                size={20}
-                color={theme.colors.textSecondary}
-              />
+            <View
+              style={[
+                styles.inputRow,
+                focusedField === "password" && styles.inputRowFocused,
+              ]}
+            >
+              <View style={styles.inputIconWrap}>
+                <MaterialIcons
+                  name="lock"
+                  size={16}
+                  color={focusedField === "password" ? "#FF5A5F" : "#8A95A3"}
+                />
+              </View>
               <TextInput
                 style={styles.input}
                 placeholder="Enter your password"
+                placeholderTextColor="#C4CAD4"
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
                 editable={!loading}
+                onFocus={() => setFocusedField("password")}
+                onBlur={() => setFocusedField(null)}
               />
-              <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+              <TouchableOpacity
+                onPress={() => setShowPassword(!showPassword)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
                 <MaterialIcons
                   name={showPassword ? "visibility" : "visibility-off"}
-                  size={20}
-                  color={theme.colors.textSecondary}
+                  size={18}
+                  color="#8A95A3"
                 />
               </TouchableOpacity>
             </View>
           </View>
 
-          {/* Forgot Password */}
+          {/* Forgot */}
           <TouchableOpacity
-            style={styles.forgotPassword}
             onPress={handleForgotPassword}
+            style={styles.forgotWrap}
+            activeOpacity={0.7}
           >
-            <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+            <Text style={styles.forgotText}>Forgot Password?</Text>
           </TouchableOpacity>
 
-          {/* Login Button */}
+          {/* Login btn */}
           <TouchableOpacity
-            style={[styles.loginButton, loading && styles.disabledButton]}
-            onPress={handleEmailLogin}
+            onPress={handleLogin}
             disabled={loading}
+            activeOpacity={0.88}
+            style={styles.loginBtnWrap}
           >
-            {loading ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.loginButtonText}>Sign In</Text>
-            )}
+            <LinearGradient
+              colors={loading ? ["#C4CAD4", "#C4CAD4"] : ["#FF5A5F", "#FF9F43"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.loginBtn}
+            >
+              {loading ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <>
+                  <Text style={styles.loginBtnText}>Sign In</Text>
+                  <MaterialIcons
+                    name="arrow-forward"
+                    size={18}
+                    color="#FFFFFF"
+                  />
+                </>
+              )}
+            </LinearGradient>
           </TouchableOpacity>
 
-          {/* Sign Up Link */}
-          <View style={styles.signupContainer}>
+          {/* Signup link */}
+          <View style={styles.signupRow}>
             <Text style={styles.signupText}>Don't have an account? </Text>
-            <TouchableOpacity onPress={() => router.push("/(auth)/signup")}>
+            <TouchableOpacity
+              onPress={() => router.push("/(auth)/signup")}
+              activeOpacity={0.7}
+            >
               <Text style={styles.signupLink}>Sign Up</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </Animated.View>
       </KeyboardAwareScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#FFFFFF",
+  container: { flex: 1, backgroundColor: "#F5F6F8" },
+
+  headerGrad: {
+    overflow: "hidden",
+    paddingHorizontal: 20,
+    paddingBottom: 0,
+    shadowColor: "#6B2FA0",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 10,
   },
-  scrollContent: {
-    flexGrow: 1,
-    padding: theme.spacing.lg,
+  headerOrb: {
+    position: "absolute",
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: "rgba(255,90,95,0.15)",
+    top: -40,
+    right: -30,
   },
-  header: {
-    marginTop: theme.spacing.xxl,
-    marginBottom: theme.spacing.xl,
+  backBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 20,
   },
-  backButton: {
-    marginBottom: theme.spacing.lg,
+  headerContent: { alignItems: "flex-start", marginBottom: 24 },
+  logoBadge: { borderRadius: 10, overflow: "hidden", marginBottom: 14 },
+  logoBadgeGrad: {
+    width: 40,
+    height: 40,
+    justifyContent: "center",
+    alignItems: "center",
   },
-  title: {
-    fontSize: theme.fontSize.xxl,
-    fontWeight: "bold",
-    color: theme.colors.text,
-    marginBottom: theme.spacing.xs,
+  headerTitle: {
+    fontSize: 26,
+    fontWeight: "900",
+    color: "#FFFFFF",
+    letterSpacing: -0.5,
+    marginBottom: 6,
   },
-  subtitle: {
-    fontSize: theme.fontSize.md,
-    color: theme.colors.textSecondary,
+  headerSub: {
+    fontSize: 14,
+    color: "rgba(255,255,255,0.6)",
+    fontWeight: "400",
   },
-  form: {
-    flex: 1,
-  },
-  inputContainer: {
-    marginBottom: theme.spacing.lg,
-  },
+  accentBar: { flexDirection: "row", height: 3, marginTop: 20 },
+  accentSeg: { flex: 1 },
+
+  scrollContent: { padding: 20 },
+
+  fieldWrap: { marginBottom: 16 },
   label: {
-    fontSize: theme.fontSize.sm,
-    fontWeight: "600",
-    color: theme.colors.text,
-    marginBottom: theme.spacing.xs,
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#0F1B2D",
+    marginBottom: 8,
+    letterSpacing: 0.3,
   },
-  inputWrapper: {
+  inputRow: {
     flexDirection: "row",
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.md,
-    paddingHorizontal: theme.spacing.md,
-    backgroundColor: theme.colors.surface,
-    gap: theme.spacing.sm,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "#EEF0F4",
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+    gap: 10,
+  },
+  inputRowFocused: {
+    borderColor: "#FF5A5F",
+    shadowColor: "#FF5A5F",
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+  },
+  inputIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    backgroundColor: "#F5F6F8",
+    justifyContent: "center",
+    alignItems: "center",
   },
   input: {
     flex: 1,
-    paddingVertical: theme.spacing.md,
-    fontSize: theme.fontSize.md,
-    color: theme.colors.text,
+    fontSize: 14,
+    color: "#0F1B2D",
+    paddingVertical: 12,
+    fontWeight: "500",
   },
-  forgotPassword: {
-    alignSelf: "flex-end",
-    marginBottom: theme.spacing.lg,
-  },
-  forgotPasswordText: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.primary,
-    fontWeight: "600",
-  },
-  loginButton: {
-    backgroundColor: theme.colors.primary,
-    paddingVertical: theme.spacing.md,
-    borderRadius: theme.borderRadius.md,
-    alignItems: "center",
-  },
-  disabledButton: {
-    opacity: 0.6,
-  },
-  loginButtonText: {
-    color: "#FFFFFF",
-    fontSize: theme.fontSize.lg,
-    fontWeight: "600",
-  },
-  signupContainer: {
+
+  forgotWrap: { alignSelf: "flex-end", marginBottom: 24 },
+  forgotText: { fontSize: 13, fontWeight: "700", color: "#FF5A5F" },
+
+  loginBtnWrap: { borderRadius: 14, overflow: "hidden", marginBottom: 20 },
+  loginBtn: {
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "center",
-    marginTop: theme.spacing.lg,
+    gap: 10,
+    paddingVertical: 15,
   },
-  signupText: {
-    fontSize: theme.fontSize.md,
-    color: theme.colors.textSecondary,
-  },
-  signupLink: {
-    fontSize: theme.fontSize.md,
-    color: theme.colors.primary,
-    fontWeight: "600",
-  },
+  loginBtnText: { fontSize: 15, fontWeight: "800", color: "#FFFFFF" },
+
+  signupRow: { flexDirection: "row", justifyContent: "center" },
+  signupText: { fontSize: 14, color: "#8A95A3", fontWeight: "400" },
+  signupLink: { fontSize: 14, fontWeight: "700", color: "#FF5A5F" },
 });

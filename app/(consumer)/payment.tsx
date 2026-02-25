@@ -5,596 +5,575 @@ import {
   StyleSheet,
   StatusBar,
   TouchableOpacity,
-  Alert,
   ActivityIndicator,
   ScrollView,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { MaterialIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import {
-  collection,
-  addDoc,
-  serverTimestamp,
-  doc,
-  updateDoc,
-  increment,
-} from "firebase/firestore";
-import { db } from "../../config/firebase";
-import { useAuth } from "../../contexts/AuthContext";
-import { theme } from "../../constants/theme";
+import { useRazorpayCheckout } from "../../hooks/useRazorpayCheckout";
 
 export default function PaymentScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { user, userData } = useAuth();
-
+  const insets = useSafeAreaInsets();
+  const { initiatePayment, loading: paymentLoading } = useRazorpayCheckout();
   const [processing, setProcessing] = useState(false);
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<
-    string | null
-  >(null);
 
-  const restaurantId = params.restaurantId as string;
-  const restaurantName = params.restaurantName as string;
-  const date = new Date(params.date as string);
-  const timeSlot = params.timeSlot as string;
-  const numberOfGuests = parseInt(params.numberOfGuests as string);
-  const tableIds = (params.tableIds as string).split(",");
-  const specialRequests = params.specialRequests as string;
-  const occasion = params.occasion as string;
-  const amount = parseInt(params.amount as string);
+  // ── Parse params ──────────────────────────────────────────────────────────
+  const restaurantId = String(params.restaurantId || "");
+  const restaurantName = String(params.restaurantName || "");
+  const restaurantAddress = String(params.restaurantAddress || "");
+  const restaurantPhone = String(params.restaurantPhone || "");
+  const timeSlot = String(params.timeSlot || "");
+  const specialRequests = String(params.specialRequests || "");
+  const occasion = String(params.occasion || "");
+  const numberOfGuests = parseInt(String(params.numberOfGuests || "0"), 10);
+  const bookingFeePerPerson = parseInt(
+    String(params.bookingFeePerPerson || "0"),
+    10,
+  );
 
-  const isFreeBooking = amount === 0;
+  // date — kept as ISO string, paymentService converts it safely
+  const dateParam = String(params.date || new Date().toISOString());
 
+  // tableIds — safe parse from comma string or array
+  const rawTableIds = params.tableIds;
+  const tableIds: string[] = Array.isArray(rawTableIds)
+    ? rawTableIds.map(String)
+    : typeof rawTableIds === "string" && rawTableIds.trim()
+      ? rawTableIds
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+
+  const totalAmount = numberOfGuests * bookingFeePerPerson;
+  const isFree = totalAmount === 0;
+  const isLoading = processing || paymentLoading;
+
+  // ── Date display ──────────────────────────────────────────────────────────
+  const displayDate = new Date(dateParam).toLocaleDateString("en-IN", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+
+  // ── Payment handler ───────────────────────────────────────────────────────
   const handlePayment = async () => {
-    if (!isFreeBooking && !selectedPaymentMethod) {
-      Alert.alert(
-        "Select Payment Method",
-        "Please select a payment method to continue"
-      );
-      return;
-    }
-
     setProcessing(true);
-
     try {
-      // For free bookings, directly create booking
-      if (isFreeBooking) {
-        await createBooking("free", "FREE_BOOKING");
-        return;
-      }
-
-      // For paid bookings - integrate payment gateway
-      // TODO: Integrate Stripe or Razorpay here
-
-      // Simulating payment for now
-      Alert.alert(
-        "Payment Gateway",
-        "Payment gateway integration coming soon. Creating booking...",
-        [
-          {
-            text: "OK",
-            onPress: async () => {
-              await createBooking("success", "MOCK_PAYMENT_ID");
-            },
-          },
-        ]
-      );
-    } catch (error) {
-      console.error("Payment error:", error);
-      Alert.alert("Error", "Failed to process payment. Please try again.");
-      setProcessing(false);
-    }
-  };
-
-  const createBooking = async (paymentStatus: string, paymentId: string) => {
-    try {
-      const bookingData = {
+      await initiatePayment({
         restaurantId,
         restaurantName,
-        restaurantAddress: "", // TODO: Get from restaurant
-        restaurantPhone: "", // TODO: Get from restaurant
-        userId: user?.uid,
-        userName: userData?.fullName,
-        userPhone: userData?.phoneNumber,
-        userEmail: userData?.email,
-        date: date,
+        restaurantAddress,
+        restaurantPhone,
+        date: dateParam, // string — service converts to Timestamp
         timeSlot,
         numberOfGuests,
+        bookingFeePerPerson,
         tableIds,
-        status: "confirmed",
-        payment: {
-          amount,
-          perPersonFee: amount / numberOfGuests,
-          totalGuests: numberOfGuests,
-          currency: "INR",
-          paymentIntentId: paymentId,
-          status: paymentStatus,
-          paidAt: serverTimestamp(),
-          method: selectedPaymentMethod || "free",
+        specialRequests,
+        occasion,
+        onSuccess: () => {
+          setProcessing(false);
+          router.replace("/(consumer)/bookings");
         },
-        specialRequests: specialRequests || null,
-        occasion: occasion || null,
-        isNonRefundable: true,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      };
-
-      const docRef = await addDoc(collection(db, "bookings"), bookingData);
-
-      // Update restaurant total bookings
-      await updateDoc(doc(db, "restaurants", restaurantId), {
-        totalBookings: increment(1),
+        onError: () => setProcessing(false),
       });
-
-      // Update user booking history
-      if (user) {
-        await updateDoc(doc(db, "users", user.uid), {
-          bookingHistory: increment(1),
-        });
-      }
-
-      setProcessing(false);
-
-      // Navigate to success screen
-      Alert.alert(
-        "Booking Confirmed! 🎉",
-        `Your table has been booked at ${restaurantName}`,
-        [
-          {
-            text: "View Booking",
-            onPress: () => {
-              router.replace("/(consumer)/bookings");
-            },
-          },
-        ]
-      );
-    } catch (error) {
-      console.error("Error creating booking:", error);
-      Alert.alert("Error", "Failed to create booking. Please contact support.");
+    } catch {
       setProcessing(false);
     }
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" />
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#1A0A2E" />
 
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.backButton}
-        >
-          <MaterialIcons
-            name="arrow-back"
-            size={24}
-            color={theme.colors.text}
-          />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>
-          {isFreeBooking ? "Confirm Booking" : "Payment"}
-        </Text>
-        <View style={{ width: 24 }} />
-      </View>
+      {/* ── Header ── */}
+      <LinearGradient
+        colors={["#1A0A2E", "#3D1A6E", "#6B2FA0"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.headerGradient}
+      >
+        <View style={styles.orb1} />
+        <View style={styles.orb2} />
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Booking Summary */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Booking Summary</Text>
-          <View style={styles.summaryCard}>
-            <SummaryRow
-              icon="store"
-              label="Restaurant"
-              value={restaurantName}
-            />
-            <SummaryRow
-              icon="event"
-              label="Date"
-              value={date.toLocaleDateString("en-IN", {
-                weekday: "short",
-                day: "numeric",
-                month: "short",
-                year: "numeric",
-              })}
-            />
-            <SummaryRow icon="schedule" label="Time" value={timeSlot} />
-            <SummaryRow
-              icon="people"
-              label="Guests"
-              value={`${numberOfGuests} people`}
-            />
-            <SummaryRow
-              icon="table-restaurant"
-              label="Tables"
-              value={`${tableIds.length} tables`}
-            />
+        <View style={[styles.headerRow, { paddingTop: insets.top + 14 }]}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.backBtn}
+          >
+            <MaterialIcons name="arrow-back" size={20} color="#FFFFFF" />
+          </TouchableOpacity>
+          <View style={styles.headerCenter}>
+            <Text style={styles.headerTitle}>
+              {isFree ? "Confirm Booking" : "Payment"}
+            </Text>
+            <Text style={styles.headerSub}>{restaurantName}</Text>
           </View>
+          <View style={{ width: 38 }} />
         </View>
 
-        {/* Payment Method Selection (Only for paid bookings) */}
-        {!isFreeBooking && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Select Payment Method</Text>
-            <View style={styles.paymentMethods}>
-              <PaymentMethodCard
-                icon="credit-card"
-                title="Card"
-                subtitle="Credit / Debit Card"
-                selected={selectedPaymentMethod === "card"}
-                onPress={() => setSelectedPaymentMethod("card")}
-              />
-              <PaymentMethodCard
-                icon="account-balance-wallet"
-                title="UPI"
-                subtitle="Google Pay, PhonePe, etc."
-                selected={selectedPaymentMethod === "upi"}
-                onPress={() => setSelectedPaymentMethod("upi")}
-              />
-              <PaymentMethodCard
-                icon="account-balance"
-                title="Net Banking"
-                subtitle="All major banks"
-                selected={selectedPaymentMethod === "netbanking"}
-                onPress={() => setSelectedPaymentMethod("netbanking")}
-              />
-            </View>
-          </View>
-        )}
-
-        {/* Price Breakdown */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Price Details</Text>
-          <View style={styles.priceCard}>
-            <PriceRow
-              label={`Booking Fee (${numberOfGuests} guests)`}
-              value={isFreeBooking ? "FREE" : `₹${amount}`}
-              isFree={isFreeBooking}
+        {/* Amount hero */}
+        <View style={styles.amountHero}>
+          <Text style={styles.amountLabel}>TOTAL PAYABLE</Text>
+          <Text style={styles.amountValue}>
+            {isFree ? "FREE" : `₹${totalAmount}`}
+          </Text>
+          <View style={styles.guestPill}>
+            <MaterialIcons
+              name="people"
+              size={13}
+              color="rgba(255,255,255,0.8)"
             />
-            <View style={styles.priceDivider} />
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>Total Amount</Text>
-              {isFreeBooking ? (
-                <Text style={styles.totalValueFree}>FREE</Text>
-              ) : (
-                <Text style={styles.totalValue}>₹{amount}</Text>
-              )}
-            </View>
-            <Text style={styles.nonRefundableNote}>
-              ⚠️ This booking is non-refundable
+            <Text style={styles.guestPillText}>
+              {numberOfGuests} guest{numberOfGuests !== 1 ? "s" : ""} ·{" "}
+              {tableIds.length} table{tableIds.length !== 1 ? "s" : ""}
             </Text>
           </View>
         </View>
 
-        <View style={{ height: 120 }} />
+        <View style={styles.accentBar}>
+          <View style={[styles.accentSeg, { backgroundColor: "#FF5A5F" }]} />
+          <View style={[styles.accentSeg, { backgroundColor: "#FF9F43" }]} />
+          <View style={[styles.accentSeg, { backgroundColor: "#A855F7" }]} />
+        </View>
+      </LinearGradient>
+
+      {/* ── Content ── */}
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Booking Summary */}
+        <SectionTitle label="Booking Summary" />
+        <View style={styles.card}>
+          <Row icon="store" label="Restaurant" value={restaurantName} />
+          <Divider />
+          <Row icon="event" label="Date" value={displayDate} />
+          <Divider />
+          <Row icon="schedule" label="Time" value={timeSlot} />
+          <Divider />
+          <Row
+            icon="people"
+            label="Guests"
+            value={`${numberOfGuests} people`}
+          />
+          <Divider />
+          <Row
+            icon="table-restaurant"
+            label="Tables"
+            value={`${tableIds.length} table${tableIds.length !== 1 ? "s" : ""}`}
+          />
+          {occasion ? (
+            <>
+              <Divider />
+              <Row icon="celebration" label="Occasion" value={occasion} />
+            </>
+          ) : null}
+          {specialRequests ? (
+            <>
+              <Divider />
+              <Row icon="notes" label="Requests" value={specialRequests} />
+            </>
+          ) : null}
+        </View>
+
+        {/* Price */}
+        <SectionTitle label="Price Details" />
+        <View style={styles.card}>
+          <Row label="Fee per person" value={`₹${bookingFeePerPerson}`} />
+          <Divider />
+          <Row label="Guests" value={`× ${numberOfGuests}`} />
+          <View style={styles.totalDivider} />
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>Total Amount</Text>
+            <LinearGradient
+              colors={isFree ? ["#10B981", "#059669"] : ["#FF5A5F", "#FF9F43"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.totalBadge}
+            >
+              <Text style={styles.totalBadgeText}>
+                {isFree ? "FREE" : `₹${totalAmount}`}
+              </Text>
+            </LinearGradient>
+          </View>
+          <View style={styles.warningRow}>
+            <MaterialIcons name="info-outline" size={14} color="#FF5A5F" />
+            <Text style={styles.warningText}>
+              This booking fee is non-refundable once confirmed
+            </Text>
+          </View>
+        </View>
+
+        {/* Secure badge */}
+        <View style={styles.secureCard}>
+          <LinearGradient
+            colors={["#10B981", "#059669"]}
+            style={styles.secureIcon}
+          >
+            <MaterialIcons name="lock" size={18} color="#FFFFFF" />
+          </LinearGradient>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.secureTitle}>Secure Payment</Text>
+            <Text style={styles.secureSub}>
+              Powered by Razorpay · 256-bit SSL encrypted
+            </Text>
+          </View>
+          <View style={styles.rzpBadge}>
+            <Text style={styles.rzpText}>RZP</Text>
+          </View>
+        </View>
+
+        <View style={{ height: 20 }} />
       </ScrollView>
 
-      {/* Bottom Bar */}
-      <View style={styles.bottomBar}>
-        <View style={styles.bottomBarLeft}>
-          <Text style={styles.bottomBarLabel}>Total</Text>
-          {isFreeBooking ? (
-            <Text style={styles.bottomBarValueFree}>FREE</Text>
-          ) : (
-            <Text style={styles.bottomBarValue}>₹{amount}</Text>
-          )}
+      {/* ── Bottom bar ── */}
+      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 14 }]}>
+        <View>
+          <Text style={styles.bottomLabel}>TOTAL PAYABLE</Text>
+          <Text style={styles.bottomValue}>
+            {isFree ? "FREE" : `₹${totalAmount}`}
+          </Text>
         </View>
         <TouchableOpacity
-          style={styles.payButton}
           onPress={handlePayment}
-          disabled={processing}
+          disabled={isLoading}
+          activeOpacity={0.9}
+          style={styles.payBtnWrap}
         >
           <LinearGradient
-            colors={[theme.colors.primary, "#FF8E53"]}
+            colors={isLoading ? ["#C4CAD4", "#C4CAD4"] : ["#FF5A5F", "#FF9F43"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
-            style={styles.payButtonGradient}
+            style={styles.payBtn}
           >
-            {processing ? (
-              <ActivityIndicator color="#FFFFFF" />
+            {isLoading ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
             ) : (
               <>
-                <MaterialIcons name="verified" size={20} color="#FFFFFF" />
-                <Text style={styles.payButtonText}>
-                  {isFreeBooking ? "Confirm Booking" : "Pay Now"}
+                <MaterialIcons name="payment" size={20} color="#FFFFFF" />
+                <Text style={styles.payBtnText}>
+                  {isFree ? "Confirm Booking" : `Pay ₹${totalAmount}`}
                 </Text>
               </>
             )}
           </LinearGradient>
         </TouchableOpacity>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
-// Summary Row Component
-const SummaryRow = ({
-  icon,
-  label,
-  value,
-}: {
-  icon: any;
-  label: string;
-  value: string;
-}) => (
-  <View style={styles.summaryRow}>
-    <View style={styles.summaryRowLeft}>
-      <MaterialIcons name={icon} size={20} color={theme.colors.textSecondary} />
-      <Text style={styles.summaryLabel}>{label}</Text>
-    </View>
-    <Text style={styles.summaryValue}>{value}</Text>
+// ─── Sub-components ───────────────────────────────────────────────────────────
+const Divider = () => <View style={styles.divider} />;
+
+const SectionTitle = ({ label }: { label: string }) => (
+  <View style={styles.sectionTitleRow}>
+    <View style={styles.sectionDot} />
+    <Text style={styles.sectionTitle}>{label}</Text>
   </View>
 );
 
-// Payment Method Card Component
-const PaymentMethodCard = ({
+const Row = ({
   icon,
-  title,
-  subtitle,
-  selected,
-  onPress,
-}: {
-  icon: any;
-  title: string;
-  subtitle: string;
-  selected: boolean;
-  onPress: () => void;
-}) => (
-  <TouchableOpacity
-    style={[styles.paymentCard, selected && styles.paymentCardSelected]}
-    onPress={onPress}
-  >
-    <MaterialIcons
-      name={icon}
-      size={32}
-      color={selected ? theme.colors.primary : theme.colors.textSecondary}
-    />
-    <View style={styles.paymentCardText}>
-      <Text
-        style={[
-          styles.paymentCardTitle,
-          selected && styles.paymentCardTitleSelected,
-        ]}
-      >
-        {title}
-      </Text>
-      <Text style={styles.paymentCardSubtitle}>{subtitle}</Text>
-    </View>
-    {selected && (
-      <MaterialIcons
-        name="check-circle"
-        size={24}
-        color={theme.colors.primary}
-      />
-    )}
-  </TouchableOpacity>
-);
-
-// Price Row Component
-const PriceRow = ({
   label,
   value,
-  isFree,
 }: {
+  icon?: any;
   label: string;
   value: string;
-  isFree?: boolean;
 }) => (
-  <View style={styles.priceRow}>
-    <Text style={styles.priceLabel}>{label}</Text>
-    <Text style={[styles.priceValue, isFree && styles.priceValueFree]}>
+  <View style={styles.row}>
+    <View style={styles.rowLeft}>
+      {icon && (
+        <View style={styles.rowIcon}>
+          <MaterialIcons name={icon} size={15} color="#8A95A3" />
+        </View>
+      )}
+      <Text style={styles.rowLabel}>{label}</Text>
+    </View>
+    <Text style={styles.rowValue} numberOfLines={1}>
       {value}
     </Text>
   </View>
 );
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#FFFFFF",
+  container: { flex: 1, backgroundColor: "#F5F6F8" },
+
+  headerGradient: {
+    overflow: "hidden",
+    shadowColor: "#6B2FA0",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 10,
   },
-  header: {
+  orb1: {
+    position: "absolute",
+    width: 130,
+    height: 130,
+    borderRadius: 65,
+    backgroundColor: "rgba(255,90,95,0.2)",
+    top: -40,
+    right: -20,
+  },
+  orb2: {
+    position: "absolute",
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: "rgba(255,159,67,0.15)",
+    top: 10,
+    right: 60,
+  },
+  headerRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: theme.spacing.lg,
-    paddingVertical: theme.spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
   },
-  backButton: {
-    padding: theme.spacing.xs,
+  backBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    justifyContent: "center",
+    alignItems: "center",
   },
+  headerCenter: { alignItems: "center", flex: 1 },
   headerTitle: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: "bold",
-    color: theme.colors.text,
+    fontSize: 17,
+    fontWeight: "900",
+    color: "#FFFFFF",
+    letterSpacing: -0.3,
   },
-  content: {
-    flex: 1,
+  headerSub: {
+    fontSize: 11,
+    color: "rgba(255,255,255,0.6)",
+    fontWeight: "500",
+    marginTop: 2,
   },
-  section: {
-    padding: theme.spacing.lg,
-    borderBottomWidth: 8,
-    borderBottomColor: theme.colors.surface,
-  },
-  sectionTitle: {
-    fontSize: theme.fontSize.lg,
+
+  amountHero: { alignItems: "center", paddingVertical: 20, gap: 6 },
+  amountLabel: {
+    fontSize: 11,
+    color: "rgba(255,255,255,0.55)",
     fontWeight: "700",
-    color: theme.colors.text,
-    marginBottom: theme.spacing.md,
+    letterSpacing: 1.2,
   },
-  summaryCard: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.borderRadius.lg,
-    padding: theme.spacing.lg,
-    gap: theme.spacing.sm,
+  amountValue: {
+    fontSize: 44,
+    fontWeight: "900",
+    color: "#FFFFFF",
+    letterSpacing: -1,
   },
-  summaryRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: theme.spacing.xs,
-  },
-  summaryRowLeft: {
+  guestPill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing.sm,
-    flex: 1,
+    gap: 5,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
   },
-  summaryLabel: {
-    fontSize: theme.fontSize.md,
-    color: theme.colors.textSecondary,
-  },
-  summaryValue: {
-    fontSize: theme.fontSize.md,
+  guestPillText: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.85)",
     fontWeight: "600",
-    color: theme.colors.text,
-    textAlign: "right",
   },
-  paymentMethods: {
-    gap: theme.spacing.sm,
-  },
-  paymentCard: {
+
+  accentBar: { flexDirection: "row", height: 3 },
+  accentSeg: { flex: 1 },
+
+  scroll: { flex: 1 },
+  scrollContent: { padding: 16, gap: 10 },
+
+  sectionTitleRow: {
     flexDirection: "row",
     alignItems: "center",
-    padding: theme.spacing.md,
-    borderRadius: theme.borderRadius.lg,
-    borderWidth: 2,
-    borderColor: theme.colors.border,
+    gap: 8,
+    marginTop: 6,
+  },
+  sectionDot: {
+    width: 4,
+    height: 18,
+    borderRadius: 2,
+    backgroundColor: "#FF5A5F",
+  },
+  sectionTitle: { fontSize: 14, fontWeight: "800", color: "#0F1B2D" },
+
+  card: {
     backgroundColor: "#FFFFFF",
-    gap: theme.spacing.md,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#EEF0F4",
+    shadowColor: "#1A0A2E",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+    overflow: "hidden",
   },
-  paymentCardSelected: {
-    borderColor: theme.colors.primary,
-    backgroundColor: `${theme.colors.primary}08`,
-  },
-  paymentCardText: {
-    flex: 1,
-  },
-  paymentCardTitle: {
-    fontSize: theme.fontSize.md,
-    fontWeight: "600",
-    color: theme.colors.text,
-    marginBottom: 2,
-  },
-  paymentCardTitleSelected: {
-    color: theme.colors.primary,
-  },
-  paymentCardSubtitle: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textSecondary,
-  },
-  priceCard: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.borderRadius.lg,
-    padding: theme.spacing.lg,
-  },
-  priceRow: {
+  divider: { height: 1, backgroundColor: "#F5F6F8", marginHorizontal: 14 },
+
+  row: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: theme.spacing.xs,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 10,
   },
-  priceLabel: {
-    fontSize: theme.fontSize.md,
-    color: theme.colors.textSecondary,
+  rowLeft: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1 },
+  rowIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: "#F5F6F8",
+    justifyContent: "center",
+    alignItems: "center",
   },
-  priceValue: {
-    fontSize: theme.fontSize.md,
-    fontWeight: "600",
-    color: theme.colors.text,
-  },
-  priceValueFree: {
-    color: "#10B981",
+  rowLabel: { fontSize: 13, color: "#8A95A3", fontWeight: "500" },
+  rowValue: {
+    fontSize: 13,
     fontWeight: "700",
+    color: "#0F1B2D",
+    textAlign: "right",
+    flexShrink: 1,
+    maxWidth: "50%",
   },
-  priceDivider: {
-    height: 1,
-    backgroundColor: theme.colors.border,
-    marginVertical: theme.spacing.sm,
-  },
+
+  totalDivider: { height: 1, backgroundColor: "#F5F6F8", marginHorizontal: 14 },
   totalRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: theme.spacing.xs,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
   },
-  totalLabel: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: "700",
-    color: theme.colors.text,
+  totalLabel: { fontSize: 15, fontWeight: "800", color: "#0F1B2D" },
+  totalBadge: { paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20 },
+  totalBadgeText: {
+    fontSize: 15,
+    fontWeight: "900",
+    color: "#FFFFFF",
+    letterSpacing: -0.3,
   },
-  totalValue: {
-    fontSize: theme.fontSize.xl,
-    fontWeight: "700",
-    color: theme.colors.primary,
+
+  warningRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginHorizontal: 14,
+    marginBottom: 12,
+    backgroundColor: "#FFF0F0",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
   },
-  totalValueFree: {
-    fontSize: theme.fontSize.xl,
-    fontWeight: "700",
-    color: "#10B981",
+  warningText: { fontSize: 11, color: "#FF5A5F", fontWeight: "600", flex: 1 },
+
+  secureCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#10B98120",
+    shadowColor: "#10B981",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  nonRefundableNote: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.error,
-    marginTop: theme.spacing.sm,
-    textAlign: "center",
-    fontWeight: "500",
+  secureIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
   },
+  secureTitle: { fontSize: 14, fontWeight: "700", color: "#059669" },
+  secureSub: { fontSize: 11, color: "#6B7280", marginTop: 2 },
+  rzpBadge: {
+    backgroundColor: "#1A1A2E",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  rzpText: {
+    fontSize: 11,
+    fontWeight: "900",
+    color: "#FFFFFF",
+    letterSpacing: 0.5,
+  },
+
   bottomBar: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: theme.spacing.lg,
+    paddingHorizontal: 16,
+    paddingTop: 14,
     backgroundColor: "#FFFFFF",
     borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
+    borderTopColor: "#EEF0F4",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 10,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 12,
   },
-  bottomBarLeft: {
-    flex: 1,
-  },
-  bottomBarLabel: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textSecondary,
-    marginBottom: 2,
-  },
-  bottomBarValue: {
-    fontSize: theme.fontSize.xl,
+  bottomLabel: {
+    fontSize: 10,
+    color: "#8A95A3",
     fontWeight: "700",
-    color: theme.colors.text,
+    letterSpacing: 0.8,
+    marginBottom: 3,
   },
-  bottomBarValueFree: {
-    fontSize: theme.fontSize.xl,
-    fontWeight: "700",
-    color: "#10B981",
+  bottomValue: {
+    fontSize: 24,
+    fontWeight: "900",
+    color: "#0F1B2D",
+    letterSpacing: -0.5,
   },
-  payButton: {
-    borderRadius: theme.borderRadius.md,
+  payBtnWrap: {
+    borderRadius: 14,
     overflow: "hidden",
-    shadowColor: theme.colors.primary,
+    shadowColor: "#FF5A5F",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 6,
   },
-  payButtonGradient: {
+  payBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: theme.spacing.xl,
-    paddingVertical: theme.spacing.md,
-    gap: theme.spacing.sm,
+    paddingHorizontal: 28,
+    paddingVertical: 16,
+    gap: 8,
+    minWidth: 160,
   },
-  payButtonText: {
-    fontSize: theme.fontSize.md,
-    fontWeight: "700",
+  payBtnText: {
+    fontSize: 15,
+    fontWeight: "800",
     color: "#FFFFFF",
+    letterSpacing: -0.2,
   },
 });

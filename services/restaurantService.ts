@@ -15,14 +15,14 @@ export const restaurantService = {
   // Get approved restaurants
   getRestaurants: async (
     lastDoc?: DocumentSnapshot,
-    limitCount: number = 10
+    limitCount: number = 10,
   ) => {
     try {
       let q = query(
         collection(db, "restaurants"),
         where("status", "==", "approved"),
         orderBy("createdAt", "desc"),
-        limit(limitCount)
+        limit(limitCount),
       );
 
       if (lastDoc) {
@@ -59,7 +59,7 @@ export const restaurantService = {
       const q = query(
         collection(db, "restaurants"),
         where("status", "==", "approved"),
-        where("searchKeywords", "array-contains", searchQuery.toLowerCase())
+        where("searchKeywords", "array-contains", searchQuery.toLowerCase()),
       );
 
       const snapshot = await getDocs(q);
@@ -88,7 +88,7 @@ export const restaurantService = {
         collection(db, "restaurants"),
         where("status", "==", "approved"),
         where("cuisine", "array-contains", cuisine),
-        orderBy("createdAt", "desc")
+        orderBy("createdAt", "desc"),
       );
 
       const snapshot = await getDocs(q);

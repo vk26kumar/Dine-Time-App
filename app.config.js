@@ -9,6 +9,7 @@ export default {
     orientation: "portrait",
     icon: "./assets/icon.png",
     userInterfaceStyle: "automatic",
+
     splash: {
       image: "./assets/splash-icon.png",
       resizeMode: "contain",
@@ -60,6 +61,12 @@ export default {
     web: {
       bundler: "metro",
       favicon: "./assets/favicon.png",
+    },
+
+    extra: {
+      eas: {
+        projectId: "aae3e973-de12-41be-bc1b-6386d4943600",
+      },
     },
   },
 };

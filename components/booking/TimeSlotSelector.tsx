@@ -1,13 +1,8 @@
 import React from "react";
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  ScrollView,
-} from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { MaterialIcons } from "@expo/vector-icons";
 import { Restaurant } from "../../types";
-import { theme } from "../../constants/theme";
 
 interface TimeSlotSelectorProps {
   selectedDate: Date;
@@ -27,133 +22,175 @@ export default function TimeSlotSelector({
       .toLocaleDateString("en-US", { weekday: "long" })
       .toLowerCase() as keyof typeof restaurant.operatingHours;
     const hours = restaurant.operatingHours[dayName];
-
     if (hours.closed) return [];
 
     const slots: string[] = [];
     const [openHour, openMin] = hours.open.split(":").map(Number);
     const [closeHour, closeMin] = hours.close.split(":").map(Number);
-
-    let currentHour = openHour;
-    let currentMin = openMin;
+    let currentHour = openHour,
+      currentMin = openMin;
 
     while (
       currentHour < closeHour ||
       (currentHour === closeHour && currentMin < closeMin)
     ) {
-      const startTime = `${currentHour.toString().padStart(2, "0")}:${currentMin
-        .toString()
-        .padStart(2, "0")}`;
-
-      // Add 2 hours for end time
-      let endHour = currentHour + 2;
-      let endMin = currentMin;
-
-      const endTime = `${endHour.toString().padStart(2, "0")}:${endMin
-        .toString()
-        .padStart(2, "0")}`;
-
-      slots.push(`${startTime} - ${endTime}`);
-
-      // Increment by 30 minutes
+      const start = `${currentHour.toString().padStart(2, "0")}:${currentMin.toString().padStart(2, "0")}`;
+      const endH = currentHour + 2;
+      const end = `${endH.toString().padStart(2, "0")}:${currentMin.toString().padStart(2, "0")}`;
+      slots.push(`${start} - ${end}`);
       currentMin += 30;
       if (currentMin >= 60) {
         currentMin = 0;
         currentHour++;
       }
     }
-
     return slots;
+  };
+
+  const isPastTime = (slot: string) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const sel = new Date(selectedDate);
+    sel.setHours(0, 0, 0, 0);
+    if (sel.getTime() > today.getTime()) return false;
+    const [startTime] = slot.split(" - ");
+    const [h, m] = startTime.split(":").map(Number);
+    const slotDate = new Date();
+    slotDate.setHours(h, m, 0, 0);
+    return slotDate <= new Date();
+  };
+
+  const formatTime = (t: string) => {
+    const [h, m] = t.split(":").map(Number);
+    const ampm = h >= 12 ? "PM" : "AM";
+    const h12 = h % 12 || 12;
+    return `${h12}${m > 0 ? `:${m.toString().padStart(2, "0")}` : ""} ${ampm}`;
   };
 
   const timeSlots = generateTimeSlots();
 
-  const isPastTime = (timeSlot: string) => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const selected = new Date(selectedDate);
-    selected.setHours(0, 0, 0, 0);
-
-    if (selected.getTime() > today.getTime()) return false;
-
-    const [startTime] = timeSlot.split(" - ");
-    const [hour, min] = startTime.split(":").map(Number);
-    const now = new Date();
-    const slotTime = new Date();
-    slotTime.setHours(hour, min, 0, 0);
-
-    return slotTime <= now;
-  };
+  if (timeSlots.length === 0) {
+    return (
+      <View style={styles.emptyWrap}>
+        <MaterialIcons name="event-busy" size={28} color="#C4CAD4" />
+        <Text style={styles.emptyText}>Restaurant is closed on this day</Text>
+      </View>
+    );
+  }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.grid}>
-        {timeSlots.map((slot, index) => {
-          const isSelected = selectedTimeSlot === slot;
-          const isPast = isPastTime(slot);
+    <View style={styles.grid}>
+      {timeSlots.map((slot, index) => {
+        const isSelected = selectedTimeSlot === slot;
+        const isPast = isPastTime(slot);
+        const [rawStart, rawEnd] = slot.split(" - ");
+        const start = formatTime(rawStart);
+        const end = formatTime(rawEnd);
 
+        if (isSelected) {
           return (
             <TouchableOpacity
               key={index}
-              style={[
-                styles.slotCard,
-                isSelected && styles.slotCardSelected,
-                isPast && styles.slotCardDisabled,
-              ]}
-              onPress={() => !isPast && onTimeSlotSelect(slot)}
-              disabled={isPast}
+              onPress={() => onTimeSlotSelect(slot)}
+              activeOpacity={0.85}
             >
-              <Text
-                style={[
-                  styles.slotText,
-                  isSelected && styles.slotTextSelected,
-                  isPast && styles.slotTextDisabled,
-                ]}
+              <LinearGradient
+                colors={["#FF5A5F", "#FF9F43"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.slotCard}
               >
-                {slot}
-              </Text>
+                <MaterialIcons
+                  name="schedule"
+                  size={13}
+                  color="rgba(255,255,255,0.85)"
+                />
+                <Text style={styles.slotTimeSelected}>{start}</Text>
+                <Text style={styles.slotEndSelected}>→ {end}</Text>
+              </LinearGradient>
             </TouchableOpacity>
           );
-        })}
-      </View>
+        }
+
+        return (
+          <TouchableOpacity
+            key={index}
+            onPress={() => !isPast && onTimeSlotSelect(slot)}
+            disabled={isPast}
+            activeOpacity={0.75}
+          >
+            <View
+              style={[
+                styles.slotCard,
+                styles.slotCardUnselected,
+                isPast && styles.slotCardDisabled,
+              ]}
+            >
+              <MaterialIcons
+                name="schedule"
+                size={13}
+                color={isPast ? "#C4CAD4" : "#8A95A3"}
+              />
+              <Text
+                style={[styles.slotTime, isPast && styles.slotDisabledText]}
+              >
+                {start}
+              </Text>
+              <Text style={[styles.slotEnd, isPast && styles.slotDisabledText]}>
+                → {end}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    paddingVertical: theme.spacing.xs,
-  },
-  grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: theme.spacing.sm,
-  },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: 8, paddingVertical: 4 },
+
   slotCard: {
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    borderRadius: theme.borderRadius.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    alignItems: "center",
+    gap: 2,
+    minWidth: 96,
   },
-  slotCardSelected: {
-    backgroundColor: theme.colors.primary,
-    borderColor: theme.colors.primary,
+  slotCardUnselected: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.5,
+    borderColor: "#EEF0F4",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
   },
   slotCardDisabled: {
-    backgroundColor: theme.colors.surface,
+    backgroundColor: "#F5F6F8",
+    borderColor: "#EEF0F4",
     opacity: 0.5,
   },
-  slotText: {
-    fontSize: theme.fontSize.sm,
+
+  slotTime: { fontSize: 13, fontWeight: "700", color: "#0F1B2D" },
+  slotTimeSelected: { fontSize: 13, fontWeight: "800", color: "#FFFFFF" },
+  slotEnd: { fontSize: 10, fontWeight: "500", color: "#8A95A3" },
+  slotEndSelected: {
+    fontSize: 10,
     fontWeight: "600",
-    color: theme.colors.text,
+    color: "rgba(255,255,255,0.85)",
   },
-  slotTextSelected: {
-    color: "#FFFFFF",
+  slotDisabledText: { color: "#C4CAD4" },
+
+  emptyWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 28,
+    gap: 8,
+    backgroundColor: "#F5F6F8",
+    borderRadius: 14,
   },
-  slotTextDisabled: {
-    color: theme.colors.textSecondary,
-  },
+  emptyText: { fontSize: 13, color: "#8A95A3", fontWeight: "500" },
 });

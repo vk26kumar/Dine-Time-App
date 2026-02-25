@@ -2,10 +2,11 @@
   "name": "dinetime",
   "version": "1.0.0",
   "main": "expo-router/entry",
+  "private": true,
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "web": "expo start --web"
   },
   "dependencies": {
@@ -21,6 +22,7 @@
     "expo-blur": "~15.0.7",
     "expo-build-properties": "~0.12.3",
     "expo-constants": "~18.0.9",
+    "expo-dev-client": "~6.0.20",
     "expo-image-picker": "~17.0.8",
     "expo-linear-gradient": "~15.0.7",
     "expo-linking": "~8.0.8",
@@ -30,12 +32,13 @@
     "expo-status-bar": "~3.0.8",
     "expo-web-browser": "~15.0.8",
     "firebase": "^12.4.0",
-    "react": "19.1.0",
-    "react-hook-form": "^7.65.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
     "react-native": "0.81.4",
     "react-native-gesture-handler": "~2.28.0",
     "react-native-keyboard-aware-scroll-view": "^0.9.5",
     "react-native-paper": "^5.14.5",
+    "react-native-razorpay": "^2.3.1",
     "react-native-reanimated": "~4.1.1",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
@@ -43,9 +46,8 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
-    "@types/react": "~19.1.0",
+    "@types/react": "~19.2.0",
     "babel-preset-expo": "^54.0.4",
     "typescript": "~5.9.2"
-  },
-  "private": true
+  }
 }

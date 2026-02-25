@@ -9,7 +9,7 @@ import {
 } from "firebase/auth";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "../config/firebase";
-import { User } from "../types";
+import { User, RolePreference } from "../types";
 
 interface AuthContextType {
   user: FirebaseUser | null;
@@ -31,11 +31,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       console.log(
         "🔥 AuthContext: Auth state changed:",
-        firebaseUser?.uid || "No user"
+        firebaseUser?.uid || "No user",
       );
 
       setUser(firebaseUser);
@@ -92,7 +91,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       const result = await createUserWithEmailAndPassword(
         auth,
         email,
-        password
+        password,
       );
       console.log("AuthContext: signUp successful", result.user.uid);
 

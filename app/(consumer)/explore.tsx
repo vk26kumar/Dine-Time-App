@@ -1,256 +1,230 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   View,
-  Text,
   StyleSheet,
   StatusBar,
   FlatList,
-  ActivityIndicator,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   RefreshControl,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocation } from "../../contexts/LocationContext";
 import { restaurantService } from "../../services/restaurantService";
 import LocationFetchingModal from "../../components/common/LocationFetchingModal";
 import ExploreHeader from "../../components/consumer/ExploreHeader";
 import SearchBar from "../../components/restaurant/SearchBar";
 import CuisineFilter from "../../components/restaurant/CuisineFilter";
-import RestaurantCard from "../../components/restaurant/RestaurantCard";
+import RestaurantCard, {
+  RestaurantCardSkeleton,
+} from "../../components/restaurant/RestaurantCard";
 import { Restaurant } from "../../types";
-import { theme } from "../../constants/theme";
+
+type ListItem =
+  | { type: "header" }
+  | { type: "search" }
+  | { type: "filter" }
+  | { type: "restaurant"; data: Restaurant }
+  | { type: "skeleton"; id: string };
+
+// Show 3 skeletons while refreshing
+const SKELETON_ITEMS: ListItem[] = [
+  { type: "skeleton", id: "sk1" },
+  { type: "skeleton", id: "sk2" },
+  { type: "skeleton", id: "sk3" },
+];
 
 export default function ExploreScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { loading: locationLoading } = useLocation();
 
+  const [allRestaurants, setAllRestaurants] = useState<Restaurant[]>([]);
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCuisine, setSelectedCuisine] = useState<string | null>(null);
-  const [lastDoc, setLastDoc] = useState<any>(null);
-  const [hasMore, setHasMore] = useState(true);
+  const [isScrolled, setIsScrolled] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    loadRestaurants();
+    fetchRestaurants();
   }, []);
 
-  useEffect(() => {
-    // Reload when cuisine filter changes
-    if (selectedCuisine) {
-      filterByCuisine(selectedCuisine);
-    } else {
-      loadRestaurants();
-    }
-  }, [selectedCuisine]);
-
-  const loadRestaurants = async (loadMore: boolean = false) => {
+  const fetchRestaurants = async () => {
     try {
-      if (!loadMore) {
-        setLoading(true);
-      }
-
-      const {
-        restaurants: newRestaurants,
-        lastDoc: newLastDoc,
-        hasMore: more,
-      } = await restaurantService.getRestaurants(
-        loadMore ? lastDoc : undefined
-      );
-
-      if (loadMore) {
-        setRestaurants((prev) => [...prev, ...newRestaurants]);
-      } else {
-        setRestaurants(newRestaurants);
-      }
-
-      setLastDoc(newLastDoc);
-      setHasMore(more);
-    } catch (error) {
-      console.error("Error loading restaurants:", error);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+      const data = (await restaurantService.getRestaurants()).restaurants;
+      setAllRestaurants(data);
+      setRestaurants(data);
+    } catch (e) {
+      console.error("Error fetching restaurants:", e);
     }
   };
 
-  const filterByCuisine = async (cuisine: string) => {
-    try {
-      setLoading(true);
-      const filtered = await restaurantService.filterByCuisine(cuisine);
-      setRestaurants(filtered);
-      setHasMore(false);
-    } catch (error) {
-      console.error("Error filtering restaurants:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSearch = async (query: string) => {
-    setSearchQuery(query);
-    if (query.trim().length > 2) {
-      try {
-        setLoading(true);
-        const results = await restaurantService.searchRestaurants(query);
-        setRestaurants(results);
-        setHasMore(false);
-      } catch (error) {
-        console.error("Error searching:", error);
-      } finally {
-        setLoading(false);
-      }
-    } else if (query.trim().length === 0) {
-      loadRestaurants();
-    }
-  };
-
-  const handleRefresh = () => {
+  const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     setSearchQuery("");
     setSelectedCuisine(null);
-    setLastDoc(null);
-    loadRestaurants();
+    try {
+      const data = (await restaurantService.getRestaurants()).restaurants;
+      setAllRestaurants(data);
+      setRestaurants(data);
+    } catch (e) {
+      console.error("Error refreshing restaurants:", e);
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
+
+  // Local search + cuisine filter
+  useEffect(() => {
+    let filtered = [...allRestaurants];
+    const q = searchQuery.trim().toLowerCase();
+
+    if (selectedCuisine) {
+      filtered = filtered.filter((r) => r.cuisine.includes(selectedCuisine));
+    }
+    if (q.length > 0) {
+      filtered = filtered.filter(
+        (r) =>
+          r.name.toLowerCase().includes(q) ||
+          r.cuisine.some((c) => c.toLowerCase().includes(q)) ||
+          r.address?.city?.toLowerCase().includes(q) ||
+          r.address?.state?.toLowerCase().includes(q),
+      );
+    }
+
+    setRestaurants(filtered);
+  }, [searchQuery, selectedCuisine, allRestaurants]);
+
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const offsetY = event.nativeEvent.contentOffset.y;
+    if (offsetY > 80 && !isScrolled) setIsScrolled(true);
+    else if (offsetY <= 80 && isScrolled) setIsScrolled(false);
   };
 
-  const handleLoadMore = () => {
-    if (!loading && hasMore && !searchQuery && !selectedCuisine) {
-      loadRestaurants(true);
+  // While refreshing: replace restaurant rows with skeletons
+  const restaurantRows: ListItem[] = refreshing
+    ? SKELETON_ITEMS
+    : restaurants.map((r): ListItem => ({ type: "restaurant", data: r }));
+
+  const listData: ListItem[] = [
+    { type: "header" },
+    { type: "search" },
+    { type: "filter" },
+    ...restaurantRows,
+  ];
+
+  const renderItem = ({ item }: { item: ListItem }) => {
+    switch (item.type) {
+      case "header":
+        return <ExploreHeader />;
+
+      case "search":
+        return (
+          <View
+            style={[
+              styles.stickyWrapper,
+              { paddingTop: isScrolled ? insets.top : 0 },
+            ]}
+          >
+            <SearchBar
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              onSearch={(text) => setSearchQuery(text)}
+              onFilterPress={() => {}}
+            />
+          </View>
+        );
+
+      case "filter":
+        return (
+          <View style={styles.whiteSection}>
+            <CuisineFilter
+              selectedCuisine={selectedCuisine}
+              onSelectCuisine={setSelectedCuisine}
+            />
+          </View>
+        );
+
+      case "skeleton":
+        return <RestaurantCardSkeleton />;
+
+      case "restaurant":
+        return (
+          <RestaurantCard
+            restaurant={item.data}
+            onPress={() =>
+              router.push(`/(consumer)/restaurant/${item.data.id}`)
+            }
+          />
+        );
+
+      default:
+        return null;
     }
   };
 
-  const handleRestaurantPress = (restaurant: Restaurant) => {
-    router.push(`/(consumer)/restaurant/${restaurant.id}`);
-  };
-  const renderRestaurant = ({ item }: { item: Restaurant }) => (
-    <RestaurantCard
-      restaurant={item}
-      onPress={() => handleRestaurantPress(item)}
-    />
-  );
-
-  const renderEmpty = () => {
-    if (loading) return null;
-    return (
-      <View style={styles.emptyContainer}>
-        <Text style={styles.emptyText}>😕 No restaurants found</Text>
-        <Text style={styles.emptySubtext}>
-          {searchQuery
-            ? "Try a different search term"
-            : "Check back later for new restaurants"}
-        </Text>
-      </View>
-    );
-  };
-
-  const renderFooter = () => {
-    if (!loading || restaurants.length === 0) return null;
-    return (
-      <View style={styles.footerLoader}>
-        <ActivityIndicator size="small" color={theme.colors.primary} />
-      </View>
-    );
-  };
-
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" />
-
-      {/* Header */}
-      <ExploreHeader />
-
-      {/* Search Bar */}
-      <SearchBar
-        value={searchQuery}
-        onChangeText={handleSearch}
-        onFilterPress={() => {
-          // TODO: Open filter modal
-          console.log("Filter pressed");
-        }}
+    <View style={styles.container}>
+      <StatusBar
+        barStyle={isScrolled ? "dark-content" : "light-content"}
+        translucent
+        backgroundColor="transparent"
       />
 
-      {/* Cuisine Filter */}
-      <CuisineFilter
-        cuisines={[]}
-        selectedCuisine={selectedCuisine}
-        onSelectCuisine={setSelectedCuisine}
-      />
-
-      {/* Restaurant List */}
       <FlatList
-        data={restaurants}
-        renderItem={renderRestaurant}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
+        data={listData}
+        renderItem={renderItem}
+        keyExtractor={(item, index) =>
+          item.type === "skeleton"
+            ? item.id
+            : item.type === "restaurant"
+              ? item.data.id
+              : `${item.type}-${index}`
+        }
+        stickyHeaderIndices={[1]}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={handleRefresh}
-            colors={[theme.colors.primary]}
-            tintColor={theme.colors.primary}
+            colors={["#FF5A5F"]}
+            tintColor="#FF5A5F"
+            progressViewOffset={0}
           />
         }
-        onEndReached={handleLoadMore}
-        onEndReachedThreshold={0.5}
-        ListEmptyComponent={renderEmpty}
-        ListFooterComponent={renderFooter}
       />
 
-      {/* Location Fetching Modal */}
       <LocationFetchingModal visible={locationLoading} />
-
-      {/* Initial Loading */}
-      {loading && restaurants.length === 0 && (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={theme.colors.primary} />
-          <Text style={styles.loadingText}>Loading restaurants...</Text>
-        </View>
-      )}
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  container: { flex: 1, backgroundColor: "#F5F6F8" },
+  stickyWrapper: {
     backgroundColor: "#FFFFFF",
+    marginTop: -2,
+    zIndex: 100,
+    borderBottomWidth: 1,
+    borderBottomColor: "#EDEEF2",
+    paddingBottom: 8,
+    paddingHorizontal: 4,
+    shadowColor: "#1A0A2E",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.07,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  listContent: {
-    paddingTop: theme.spacing.sm,
-    paddingBottom: theme.spacing.xl,
+  whiteSection: {
+    backgroundColor: "#FFFFFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#EDEEF2",
+    paddingBottom: 4,
   },
-  emptyContainer: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: theme.spacing.xxl * 2,
-    paddingHorizontal: theme.spacing.xl,
-  },
-  emptyText: {
-    fontSize: theme.fontSize.xl,
-    fontWeight: "bold",
-    color: theme.colors.text,
-    marginBottom: theme.spacing.sm,
-  },
-  emptySubtext: {
-    fontSize: theme.fontSize.md,
-    color: theme.colors.textSecondary,
-    textAlign: "center",
-  },
-  footerLoader: {
-    paddingVertical: theme.spacing.lg,
-    alignItems: "center",
-  },
-  loadingContainer: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(255, 255, 255, 0.9)",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: theme.spacing.md,
-  },
-  loadingText: {
-    fontSize: theme.fontSize.md,
-    color: theme.colors.textSecondary,
-  },
+  listContent: { paddingBottom: 100 },
 });

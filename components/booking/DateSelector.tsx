@@ -6,8 +6,8 @@ import {
   StyleSheet,
   ScrollView,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { Restaurant } from "../../types";
-import { theme } from "../../constants/theme";
 
 interface DateSelectorProps {
   selectedDate: Date | null;
@@ -20,12 +20,10 @@ export default function DateSelector({
   onDateSelect,
   restaurant,
 }: DateSelectorProps) {
-  // Generate next 14 days
   const generateDates = () => {
     const dates: Date[] = [];
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-
     for (let i = 0; i < 14; i++) {
       const date = new Date(today);
       date.setDate(today.getDate() + i);
@@ -36,9 +34,8 @@ export default function DateSelector({
 
   const dates = generateDates();
 
-  const isDateSelected = (date: Date) => {
-    return selectedDate && date.toDateString() === selectedDate.toDateString();
-  };
+  const isDateSelected = (date: Date) =>
+    !!(selectedDate && date.toDateString() === selectedDate.toDateString());
 
   const isDateClosed = (date: Date) => {
     const dayName = date
@@ -58,37 +55,66 @@ export default function DateSelector({
         const isClosed = isDateClosed(date);
         const isToday = index === 0;
 
+        if (isSelected) {
+          return (
+            <TouchableOpacity
+              key={index}
+              onPress={() => !isClosed && onDateSelect(date)}
+              disabled={isClosed}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={["#FF5A5F", "#FF9F43"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0, y: 1 }}
+                style={styles.dateCard}
+              >
+                {isToday && (
+                  <View style={styles.todayPillSelected}>
+                    <Text style={styles.todayPillSelectedText}>Today</Text>
+                  </View>
+                )}
+                <Text style={styles.dayTextSelected}>
+                  {date.toLocaleDateString("en-US", { weekday: "short" })}
+                </Text>
+                <Text style={styles.dateTextSelected}>{date.getDate()}</Text>
+                <View style={styles.selectedDot} />
+              </LinearGradient>
+            </TouchableOpacity>
+          );
+        }
+
         return (
           <TouchableOpacity
             key={index}
-            style={[
-              styles.dateCard,
-              isSelected && styles.dateCardSelected,
-              isClosed && styles.dateCardDisabled,
-            ]}
             onPress={() => !isClosed && onDateSelect(date)}
             disabled={isClosed}
+            activeOpacity={0.75}
           >
-            {isToday && <Text style={styles.todayLabel}>Today</Text>}
-            <Text
+            <View
               style={[
-                styles.dayText,
-                isSelected && styles.dayTextSelected,
-                isClosed && styles.dayTextDisabled,
+                styles.dateCard,
+                styles.dateCardUnselected,
+                isClosed && styles.dateCardDisabled,
               ]}
             >
-              {date.toLocaleDateString("en-US", { weekday: "short" })}
-            </Text>
-            <Text
-              style={[
-                styles.dateText,
-                isSelected && styles.dateTextSelected,
-                isClosed && styles.dateTextDisabled,
-              ]}
-            >
-              {date.getDate()}
-            </Text>
-            {isClosed && <Text style={styles.closedText}>Closed</Text>}
+              {isToday && (
+                <View style={styles.todayPill}>
+                  <Text style={styles.todayPillText}>Today</Text>
+                </View>
+              )}
+              <Text style={[styles.dayText, isClosed && styles.textDisabled]}>
+                {date.toLocaleDateString("en-US", { weekday: "short" })}
+              </Text>
+              <Text style={[styles.dateText, isClosed && styles.textDisabled]}>
+                {date.getDate()}
+              </Text>
+              {isClosed ? (
+                <Text style={styles.closedText}>Closed</Text>
+              ) : (
+                <View style={styles.availableDot} />
+              )}
+            </View>
           </TouchableOpacity>
         );
       })}
@@ -97,60 +123,84 @@ export default function DateSelector({
 }
 
 const styles = StyleSheet.create({
-  container: {
-    gap: theme.spacing.sm,
-    paddingVertical: theme.spacing.xs,
-  },
+  container: { gap: 8, paddingVertical: 4 },
+
   dateCard: {
-    width: 70,
-    paddingVertical: theme.spacing.md,
-    borderRadius: theme.borderRadius.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: "#FFFFFF",
+    width: 66,
+    paddingVertical: 12,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
+    gap: 4,
+    minHeight: 90,
   },
-  dateCardSelected: {
-    backgroundColor: theme.colors.primary,
-    borderColor: theme.colors.primary,
+  dateCardUnselected: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.5,
+    borderColor: "#EEF0F4",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
   },
   dateCardDisabled: {
-    backgroundColor: theme.colors.surface,
+    backgroundColor: "#F5F6F8",
+    borderColor: "#EEF0F4",
     opacity: 0.5,
   },
-  todayLabel: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.primary,
-    fontWeight: "600",
-    marginBottom: 4,
+
+  todayPill: {
+    backgroundColor: "#FFF0F0",
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
   },
-  dayText: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textSecondary,
-    marginBottom: 4,
+  todayPillText: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: "#FF5A5F",
+    letterSpacing: 0.3,
   },
+  todayPillSelected: {
+    backgroundColor: "rgba(255,255,255,0.28)",
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  todayPillSelectedText: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    letterSpacing: 0.3,
+  },
+
+  dayText: { fontSize: 11, fontWeight: "600", color: "#8A95A3" },
   dayTextSelected: {
-    color: "#FFFFFF",
-  },
-  dayTextDisabled: {
-    color: theme.colors.textSecondary,
-  },
-  dateText: {
-    fontSize: theme.fontSize.xl,
+    fontSize: 11,
     fontWeight: "700",
-    color: theme.colors.text,
+    color: "rgba(255,255,255,0.85)",
   },
-  dateTextSelected: {
-    color: "#FFFFFF",
-  },
-  dateTextDisabled: {
-    color: theme.colors.textSecondary,
-  },
+  dateText: { fontSize: 22, fontWeight: "800", color: "#0F1B2D" },
+  dateTextSelected: { fontSize: 22, fontWeight: "900", color: "#FFFFFF" },
+  textDisabled: { color: "#C4CAD4" },
   closedText: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.error,
-    marginTop: 4,
-    fontWeight: "500",
+    fontSize: 9,
+    fontWeight: "700",
+    color: "#EF4444",
+    letterSpacing: 0.2,
+  },
+
+  selectedDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: "rgba(255,255,255,0.7)",
+  },
+  availableDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: "#10B981",
   },
 });
