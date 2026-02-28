@@ -122,6 +122,7 @@ export default function ProfileScreen() {
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(24)).current;
+  const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     Animated.parallel([
@@ -187,10 +188,11 @@ export default function ProfileScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={C.headerBg} />
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
-      >
+          <ScrollView
+            ref={scrollRef}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
+          >
         {/* ── Header ── */}
         <LinearGradient
           colors={["#fff2e1", "#fde8c8", "#fff2e1"]}
@@ -208,7 +210,11 @@ export default function ProfileScreen() {
               <MaterialIcons name="arrow-back" size={22} color={C.text} />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>My Profile</Text>
-            <TouchableOpacity style={styles.helpBtn} activeOpacity={0.8}>
+            <TouchableOpacity
+              style={styles.helpBtn}
+              activeOpacity={0.8}
+              onPress={() => router.push("/(consumer)/help-support")}
+            >
               <Text style={styles.helpBtnText}>Help</Text>
             </TouchableOpacity>
           </View>
@@ -360,27 +366,34 @@ export default function ProfileScreen() {
           <OptionRow
             icon="person-outline"
             label="Personal Information"
-            onPress={() => {}}
+            onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
           />
           <OptionRow
             icon="history"
             label="Booking History"
-            onPress={() => {}}
+            onPress={() => router.push("/(consumer)/bookings")}
           />
           <OptionRow
             icon="account-balance-wallet"
             label="Dining Wallet"
-            onPress={() => {}}
+            onPress={() =>
+             Alert.alert("Coming Soon", "This feature is not available. It will be available soon.")
+            }
           />
           <OptionRow
             icon="receipt-long"
             label="Payment History"
-            onPress={() => {}}
+            onPress={() =>
+              router.push({
+                pathname: "/(consumer)/bookings",
+                params: { tab: "past" },
+              })
+            }
           />
           <OptionRow
             icon="local-offer"
             label="Offers & Rewards"
-            onPress={() => {}}
+            onPress={() => Alert.alert("No Offers", "No offers for now.")}
           />
         </SectionCard>
 
@@ -389,18 +402,23 @@ export default function ProfileScreen() {
           <OptionRow
             icon="notifications-none"
             label="Notifications"
-            onPress={() => {}}
+            onPress={() =>
+              Alert.alert(
+                "Notifications",
+                "You will soon be able to manage your notification preferences here."
+              )
+            }
           />
           <OptionRow
             icon="help-outline"
             label="Help & Support"
-            onPress={() => {}}
+            onPress={() => router.push("/(consumer)/help-support")}
           />
           <OptionRow
             icon="info-outline"
             label="About App"
             subtitle="Version 1.0.0"
-            onPress={() => {}}
+            onPress={() => router.push("/(consumer)/about-app")}
           />
         </SectionCard>
 
@@ -752,6 +770,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginHorizontal: 14,
     marginTop: 14,
+    marginBottom: 50,
     paddingVertical: 14,
     borderRadius: 14,
     backgroundColor: C.errorBg,
@@ -765,6 +784,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: C.textMuted,
     textAlign: "center",
-    marginTop: 20,
+    marginTop: 10,
   },
 });

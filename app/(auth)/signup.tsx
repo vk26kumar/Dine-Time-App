@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from "react";
 import {
   View,
@@ -36,32 +37,29 @@ export default function SignupScreen() {
 
   const shake = () => {
     Animated.sequence([
-      Animated.timing(shakeAnim, {
-        toValue: 8,
-        duration: 60,
-        useNativeDriver: true,
-      }),
-      Animated.timing(shakeAnim, {
-        toValue: -8,
-        duration: 60,
-        useNativeDriver: true,
-      }),
-      Animated.timing(shakeAnim, {
-        toValue: 6,
-        duration: 60,
-        useNativeDriver: true,
-      }),
-      Animated.timing(shakeAnim, {
-        toValue: -6,
-        duration: 60,
-        useNativeDriver: true,
-      }),
-      Animated.timing(shakeAnim, {
-        toValue: 0,
-        duration: 60,
-        useNativeDriver: true,
-      }),
+      Animated.timing(shakeAnim, { toValue: 8, duration: 60, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: -8, duration: 60, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 6, duration: 60, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: -6, duration: 60, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 0, duration: 60, useNativeDriver: true }),
     ]).start();
+  };
+
+  const getReadableError = (code: string) => {
+    switch (code) {
+      case "auth/email-already-in-use":
+        return "The email is already registered. Please sign in.";
+      case "auth/invalid-email":
+        return "Please enter a valid email address.";
+      case "auth/weak-password":
+        return "Password is too weak. Use at least 6 characters.";
+      case "auth/network-request-failed":
+        return "Network error. Check your internet connection.";
+      case "auth/too-many-requests":
+        return "Verification link already sent. Please check your email.";
+      default:
+        return "Something went wrong. Please try again.";
+    }
   };
 
   const validateForm = () => {
@@ -74,10 +72,7 @@ export default function SignupScreen() {
       return false;
     }
     if (password !== confirmPassword) {
-      Alert.alert(
-        "Passwords Don't Match",
-        "Please make sure both passwords match.",
-      );
+      Alert.alert("Passwords Don't Match", "Please make sure both passwords match.");
       return false;
     }
     return true;
@@ -88,36 +83,42 @@ export default function SignupScreen() {
       shake();
       return;
     }
+
     setLoading(true);
+
     try {
       await signUp(email, password);
+
       const auth = getAuth();
       let attempts = 0;
+
       while (!auth.currentUser && attempts < 5) {
         await new Promise((r) => setTimeout(r, 300));
         attempts++;
       }
-      if (!auth.currentUser)
-        throw new Error("Failed to initialize user. Please try again.");
+
+      if (!auth.currentUser) throw new Error("USER_INIT_FAILED");
+
       await sendEmailVerification(auth.currentUser);
+
       Alert.alert(
         "Verification Email Sent",
-        "Check your inbox and verify your email before continuing.",
+        "Check your inbox and verify your email before continuing."
       );
+
       setTimeout(() => router.replace("/(onboarding)/tell-us-about-you"), 800);
     } catch (error: any) {
-      if (error.code === "auth/too-many-requests") {
-        Alert.alert(
-          "Email Sent",
-          "Verification link has been sent to your email.",
-        );
-        setTimeout(
-          () => router.replace("/(onboarding)/tell-us-about-you"),
-          800,
-        );
+      const code = error?.code || error?.message;
+      const message = getReadableError(code);
+
+      console.log("Signup error:", code);
+
+      if (code === "auth/too-many-requests") {
+        Alert.alert("Email Sent", message);
+        setTimeout(() => router.replace("/(onboarding)/tell-us-about-you"), 800);
       } else {
         shake();
-        Alert.alert("Signup Failed", error.message);
+        Alert.alert("Signup Failed", message);
       }
     } finally {
       setLoading(false);
@@ -126,14 +127,13 @@ export default function SignupScreen() {
 
   const passwordStrength = () => {
     if (!password) return null;
-    if (password.length < 6)
-      return { label: "Too short", color: "#EF4444", w: "25%" };
-    if (password.length < 8)
-      return { label: "Weak", color: "#FF9F43", w: "50%" };
+    if (password.length < 6) return { label: "Too short", color: "#EF4444", w: "25%" };
+    if (password.length < 8) return { label: "Weak", color: "#FF9F43", w: "50%" };
     if (!/[A-Z]/.test(password) || !/[0-9]/.test(password))
       return { label: "Fair", color: "#FF9F43", w: "65%" };
     return { label: "Strong", color: "#10B981", w: "100%" };
   };
+
   const strength = passwordStrength();
 
   return (

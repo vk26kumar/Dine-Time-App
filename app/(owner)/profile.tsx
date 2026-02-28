@@ -82,7 +82,17 @@ export default function OwnerProfileScreen() {
   };
 
   const handleAction = (action: string) => {
-    if (action === "switch") handleSwitchToConsumer();
+    if (action === "switch") {
+      handleSwitchToConsumer();
+    }
+
+    if (action === "help") {
+      router.push("/(owner)/help-support");
+    }
+
+    if (action === "settings") {
+      Alert.alert("Settings", "Settings screen coming soon.");
+    }
   };
 
   return (
