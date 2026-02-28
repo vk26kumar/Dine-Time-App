@@ -72,8 +72,8 @@ export default function LandingScreen() {
           colors={[
             "transparent",
             "transparent",
-            "rgba(0,0,0,0.55)",
-            "rgba(0,0,0,0.82)",
+            "rgba(0, 0, 0, 0.2)",
+            "rgba(0, 0, 0, 0.72)",
           ]}
           locations={[0, 0.35, 0.65, 1]}
           style={StyleSheet.absoluteFill}
@@ -114,13 +114,13 @@ export default function LandingScreen() {
             {FEATURES.map((f, i) => (
               <View key={i} style={styles.featureCard}>
                 <LinearGradient
-                  colors={["rgba(255,90,95,0.2)", "rgba(255,159,67,0.12)"]}
+                  colors={["rgba(207, 84, 75, 0.58)", "rgba(255, 158, 67, 0.2)"]}
                   style={styles.featureIconWrap}
                 >
                   <MaterialIcons
                     name={f.icon as any}
                     size={20}
-                    color="#FF9F43"
+                    color="#e96805"
                   />
                 </LinearGradient>
                 <View>
@@ -139,7 +139,7 @@ export default function LandingScreen() {
               style={styles.primaryBtnWrap}
             >
               <LinearGradient
-                colors={["#FF5A5F", "#FF9F43"]}
+                colors={["#e94046", "#FF9F43"]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
                 style={styles.primaryBtn}
@@ -149,15 +149,6 @@ export default function LandingScreen() {
               </LinearGradient>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              onPress={() => router.push("/(auth)/login")}
-              activeOpacity={0.8}
-              style={styles.secondaryBtn}
-            >
-              <Text style={styles.secondaryBtnText}>
-                I already have an account
-              </Text>
-            </TouchableOpacity>
           </View>
 
           {/* ── Footer ── */}
@@ -212,7 +203,7 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: 15,
-    color: "rgba(255,255,255,0.65)",
+    color: "#FFFFFF",
     lineHeight: 22,
     fontWeight: "400",
     marginBottom: 28,
@@ -245,7 +236,7 @@ const styles = StyleSheet.create({
     fontWeight: "400",
   },
 
-  ctaWrap: { gap: 12, marginBottom: 20 },
+  ctaWrap: { gap: 12, marginBottom: 80 },
   primaryBtnWrap: { borderRadius: 16, overflow: "hidden" },
   primaryBtn: {
     flexDirection: "row",

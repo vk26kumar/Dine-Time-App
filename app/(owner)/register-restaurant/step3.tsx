@@ -56,13 +56,13 @@ interface DayHours {
 }
 
 const DEFAULT_HOURS: Record<string, DayHours> = {
-  monday: { open: "09:00", close: "22:00", closed: false },
-  tuesday: { open: "09:00", close: "22:00", closed: false },
-  wednesday: { open: "09:00", close: "22:00", closed: false },
-  thursday: { open: "09:00", close: "22:00", closed: false },
-  friday: { open: "09:00", close: "23:00", closed: false },
-  saturday: { open: "09:00", close: "23:00", closed: false },
-  sunday: { open: "10:00", close: "22:00", closed: false },
+  monday: { open: "07:00", close: "23:00", closed: false },
+  tuesday: { open: "07:00", close: "23:00", closed: false },
+  wednesday: { open: "07:00", close: "23:00", closed: false },
+  thursday: { open: "07:00", close: "23:00", closed: false },
+  friday: { open: "07:00", close: "23:00", closed: false },
+  saturday: { open: "07:00", close: "23:00", closed: false },
+  sunday: { open: "07:00", close: "23:00", closed: false },
 };
 
 export default function RegisterStep3() {

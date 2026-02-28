@@ -16,6 +16,9 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useAuth } from "../../contexts/AuthContext";
 import { Booking } from "../../types";
+import { useLocalSearchParams } from "expo-router";
+import { Animated } from "react-native";
+import { useRef } from "react";
 
 const STATUS_CONFIG: Record<
   string,
@@ -54,10 +57,23 @@ export default function BookingsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<"upcoming" | "past">("upcoming");
+  const { tab } = useLocalSearchParams<{ tab?: string }>();
+  const slideAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     loadBookings();
   }, [user]);
+
+  useEffect(() => {
+  if (tab === "past") {
+    setActiveTab("past");
+    slideAnim.setValue(0);
+    Animated.spring(slideAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+    }).start();
+  }
+}, [tab]);
 
   const loadBookings = async () => {
     if (!user) return;
@@ -354,26 +370,44 @@ export default function BookingsScreen() {
           <ActivityIndicator size="large" color="#FF5A5F" />
           <Text style={styles.loadingText}>Loading bookings...</Text>
         </View>
-      ) : (
-        <FlatList
-          data={filteredBookings}
-          renderItem={renderBooking}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={[
-            styles.listContent,
-            { paddingBottom: insets.bottom + 24 },
-          ]}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={handleRefresh}
-              colors={["#FF5A5F"]}
-              tintColor="#FF5A5F"
-            />
-          }
-          ListEmptyComponent={renderEmpty}
-        />
+            ) : (
+        <Animated.View
+          style={{
+            flex: 1,
+            transform: [
+              {
+                translateX: slideAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [40, 0],
+                }),
+              },
+            ],
+            opacity: slideAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0.7, 1],
+            }),
+          }}
+        >
+          <FlatList
+            data={filteredBookings}
+            renderItem={renderBooking}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={[
+              styles.listContent,
+              { paddingBottom: insets.bottom + 24 },
+            ]}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+                colors={["#FF5A5F"]}
+                tintColor="#FF5A5F"
+              />
+            }
+            ListEmptyComponent={renderEmpty}
+          />
+        </Animated.View>
       )}
     </View>
   );
