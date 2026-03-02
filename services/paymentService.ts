@@ -9,6 +9,7 @@ import {
   Timestamp,
 } from "firebase/firestore";
 import { db, auth } from "../config/firebase";
+import { notificationService } from "./notificationService";
 
 interface CreateBookingData {
   restaurantId: string;
@@ -36,7 +37,7 @@ const toFirestoreTimestamp = (date: Date | string | any): Timestamp => {
     const d = new Date(date);
     if (!isNaN(d.getTime())) return Timestamp.fromDate(d);
   }
-  return Timestamp.fromDate(new Date()); // fallback to now
+  return Timestamp.fromDate(new Date());
 };
 
 // Helper — converts anything to a safe string[]
@@ -59,13 +60,11 @@ export const paymentService = {
     const userData = userDoc.data();
     if (!userData) throw new Error("User profile not found");
 
-    // ── Safe values — nothing undefined ever reaches Firestore ──
     const safeTableIds = toStringArray(data.tableIds);
     const safeDate = toFirestoreTimestamp(data.date);
     const totalAmount =
       Number(data.numberOfGuests) * Number(data.bookingFeePerPerson);
 
-    // Payment sub-object — only include fields that exist
     const payment: Record<string, any> = {
       amount: totalAmount,
       perPersonFee: Number(data.bookingFeePerPerson),
@@ -81,7 +80,6 @@ export const paymentService = {
     if (data.razorpaySignature)
       payment.razorpaySignature = data.razorpaySignature;
 
-    // Booking document — every field is an explicit safe type
     const bookingData: Record<string, any> = {
       restaurantId: String(data.restaurantId),
       restaurantName: String(data.restaurantName),
@@ -93,10 +91,10 @@ export const paymentService = {
       userPhone: String(userData.phoneNumber || ""),
       userEmail: String(userData.email || ""),
 
-      date: safeDate, // Firestore Timestamp
+      date: safeDate,
       timeSlot: String(data.timeSlot),
       numberOfGuests: Number(data.numberOfGuests),
-      tableIds: safeTableIds, // string[]
+      tableIds: safeTableIds,
 
       status: "confirmed",
       payment,
@@ -129,6 +127,17 @@ export const paymentService = {
       updatedAt: serverTimestamp(),
     });
 
+    // ── Fire booking confirmed notification ───────────────────────────────
+    const bookingDate =
+      data.date instanceof Date ? data.date : new Date(data.date);
+    await notificationService.notifyBookingConfirmed(
+      user.uid,
+      data.restaurantName,
+      bookingRef.id,
+      bookingDate,
+      data.timeSlot,
+    );
+
     return {
       success: true,
       bookingId: bookingRef.id,
@@ -159,6 +168,13 @@ export const paymentService = {
       cancelledAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
+
+    // ── Fire booking cancelled notification ───────────────────────────────
+    await notificationService.notifyBookingCancelled(
+      user.uid,
+      String(booking.restaurantName),
+      bookingId,
+    );
 
     return {
       success: true,

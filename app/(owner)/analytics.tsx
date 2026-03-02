@@ -18,6 +18,9 @@ import { Restaurant, Booking } from "../../types";
 
 const { width } = Dimensions.get("window");
 
+// ─── Adjust to match your tab bar height ─────────────────────────────────────
+const TAB_BAR_HEIGHT = 80;
+
 interface AnalyticsData {
   totalRestaurants: number;
   totalBookings: number;
@@ -169,9 +172,17 @@ export default function AnalyticsScreen() {
         <View style={styles.headerOrb1} />
         <View style={styles.headerOrb2} />
         <View style={styles.headerTopRow}>
-          <Text style={styles.headerTitle}>Analytics</Text>
+          <View>
+            <Text style={styles.headerEyebrow}>Business Insights</Text>
+            <Text style={styles.headerTitle}>Analytics</Text>
+          </View>
           <View style={styles.headerSubPill}>
-            <Text style={styles.headerSubText}>Business Insights</Text>
+            <MaterialIcons
+              name="insights"
+              size={13}
+              color="rgba(255,255,255,0.8)"
+            />
+            <Text style={styles.headerSubText}>Live</Text>
           </View>
         </View>
 
@@ -179,11 +190,37 @@ export default function AnalyticsScreen() {
         <View style={styles.heroCard}>
           <Text style={styles.heroLabel}>TOTAL REVENUE</Text>
           <Text style={styles.heroValue}>{fmt(data.totalRevenue)}</Text>
-          <View style={styles.heroMeta}>
-            <MaterialIcons name="trending-up" size={14} color="#10B981" />
-            <Text style={styles.heroMetaText}>
-              {data.totalBookings} bookings · {data.totalGuests} guests
-            </Text>
+          <View style={styles.heroMetaRow}>
+            <View style={styles.heroMetaChip}>
+              <MaterialIcons
+                name="event"
+                size={12}
+                color="rgba(255,255,255,0.6)"
+              />
+              <Text style={styles.heroMetaText}>
+                {data.totalBookings} bookings
+              </Text>
+            </View>
+            <View style={styles.heroMetaDivider} />
+            <View style={styles.heroMetaChip}>
+              <MaterialIcons
+                name="people"
+                size={12}
+                color="rgba(255,255,255,0.6)"
+              />
+              <Text style={styles.heroMetaText}>{data.totalGuests} guests</Text>
+            </View>
+            <View style={styles.heroMetaDivider} />
+            <View style={styles.heroMetaChip}>
+              <MaterialIcons
+                name="store"
+                size={12}
+                color="rgba(255,255,255,0.6)"
+              />
+              <Text style={styles.heroMetaText}>
+                {data.totalRestaurants} restaurants
+              </Text>
+            </View>
           </View>
         </View>
 
@@ -198,7 +235,8 @@ export default function AnalyticsScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[
           styles.scroll,
-          { paddingBottom: insets.bottom + 24 },
+          // ✅ Prevents content from hiding behind tab bar
+          { paddingBottom: insets.bottom + TAB_BAR_HEIGHT + 16 },
         ]}
         refreshControl={
           <RefreshControl
@@ -231,7 +269,7 @@ export default function AnalyticsScreen() {
               },
               {
                 icon: "people",
-                label: "Guests",
+                label: "Total Guests",
                 value: String(data.totalGuests),
                 colors: ["#FF9F43", "#FF5A5F"] as [string, string],
               },
@@ -352,7 +390,9 @@ export default function AnalyticsScreen() {
                   />
                 </View>
                 <Text style={styles.metricLabel}>{m.label}</Text>
-                <Text style={styles.metricValue}>{m.value}</Text>
+                <Text style={styles.metricValue} numberOfLines={1}>
+                  {m.value}
+                </Text>
               </View>
             ))}
           </View>
@@ -392,11 +432,11 @@ export default function AnalyticsScreen() {
                           color="#FF5A5F"
                         />
                       </View>
-                      <View>
+                      <View style={{ flex: 1 }}>
                         <Text style={styles.recentName} numberOfLines={1}>
                           {b.restaurantName}
                         </Text>
-                        <Text style={styles.recentMeta}>
+                        <Text style={styles.recentMeta} numberOfLines={1}>
                           {b.userName} · {b.numberOfGuests} guests ·{" "}
                           {b.date?.toLocaleDateString("en-IN", {
                             day: "2-digit",
@@ -457,6 +497,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
 
+  // Header
   header: {
     overflow: "hidden",
     shadowColor: "#6B2FA0",
@@ -485,21 +526,32 @@ const styles = StyleSheet.create({
   },
   headerTopRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-end",
     justifyContent: "space-between",
     paddingHorizontal: 16,
     marginBottom: 16,
   },
+  headerEyebrow: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.45)",
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    marginBottom: 3,
+  },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 28,
     fontWeight: "900",
     color: "#FFFFFF",
-    letterSpacing: -0.5,
+    letterSpacing: -0.8,
   },
   headerSubPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
     backgroundColor: "rgba(255,255,255,0.15)",
     paddingHorizontal: 12,
-    paddingVertical: 5,
+    paddingVertical: 6,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.2)",
@@ -510,6 +562,7 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.8)",
   },
 
+  // Hero card
   heroCard: {
     marginHorizontal: 16,
     marginBottom: 16,
@@ -527,23 +580,33 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   heroValue: {
-    fontSize: 34,
+    fontSize: 36,
     fontWeight: "900",
     color: "#FFFFFF",
     letterSpacing: -1,
-    marginBottom: 6,
+    marginBottom: 10,
   },
-  heroMeta: { flexDirection: "row", alignItems: "center", gap: 6 },
+  heroMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  heroMetaChip: { flexDirection: "row", alignItems: "center", gap: 5 },
   heroMetaText: {
     fontSize: 12,
     color: "rgba(255,255,255,0.6)",
     fontWeight: "500",
   },
+  heroMetaDivider: {
+    width: 1,
+    height: 12,
+    backgroundColor: "rgba(255,255,255,0.2)",
+  },
 
   accentBar: { flexDirection: "row", height: 3 },
   accentSeg: { flex: 1 },
 
-  scroll: { padding: 16 },
+  scroll: { padding: 16, gap: 0 },
   section: { marginBottom: 20 },
   sectionTitleRow: {
     flexDirection: "row",
@@ -559,6 +622,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: { fontSize: 15, fontWeight: "800", color: "#0F1B2D" },
 
+  // Overview grid
   overviewGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   overviewCard: {
     width: (width - 32 - 10) / 2,
@@ -591,6 +655,7 @@ const styles = StyleSheet.create({
   },
   overviewLabel: { fontSize: 11, color: "#8A95A3", fontWeight: "600" },
 
+  // Status
   statusRow: { flexDirection: "row", gap: 10 },
   statusCard: {
     flex: 1,
@@ -624,6 +689,7 @@ const styles = StyleSheet.create({
   statusBarFill: { height: "100%", borderRadius: 2 },
   statusPct: { fontSize: 11, fontWeight: "800" },
 
+  // Metrics
   metricsCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
@@ -651,10 +717,18 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFF0F0",
     justifyContent: "center",
     alignItems: "center",
+    flexShrink: 0,
   },
   metricLabel: { flex: 1, fontSize: 13, color: "#8A95A3", fontWeight: "500" },
-  metricValue: { fontSize: 14, fontWeight: "800", color: "#0F1B2D" },
+  metricValue: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#0F1B2D",
+    maxWidth: 140,
+    textAlign: "right",
+  },
 
+  // Recent bookings
   recentList: {
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
@@ -688,7 +762,7 @@ const styles = StyleSheet.create({
   },
   recentName: { fontSize: 13, fontWeight: "700", color: "#0F1B2D" },
   recentMeta: { fontSize: 11, color: "#8A95A3", marginTop: 2 },
-  recentRight: { alignItems: "flex-end", gap: 5 },
+  recentRight: { alignItems: "flex-end", gap: 5, flexShrink: 0 },
   recentAmount: { fontSize: 14, fontWeight: "800", color: "#0F1B2D" },
   recentStatus: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   recentStatusText: { fontSize: 9, fontWeight: "700" },

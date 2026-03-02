@@ -1,7 +1,7 @@
+// app/(consumer)/_layout.tsx
 import React from "react";
-import { Tabs, useSegments } from "expo-router";
+import { Tabs } from "expo-router";
 import { MaterialIcons } from "@expo/vector-icons";
-import { theme } from "../../constants/theme";
 import { TouchableOpacity, View, Text, StyleSheet } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -10,16 +10,17 @@ const HIDE_TAB_BAR_ON = [
   "restaurant/[id]",
   "booking/[id]",
   "payment",
-  "profile-menu",
   "location-selector",
+  "favourites",
+  "notifications",
+  "search",
 ];
 
 function CustomTabBar({ state, descriptors, navigation }: any) {
   const insets = useSafeAreaInsets();
 
   const currentRoute = state.routes[state.index]?.name ?? "";
-  const shouldHide = HIDE_TAB_BAR_ON.includes(currentRoute);
-  if (shouldHide) return null;
+  if (HIDE_TAB_BAR_ON.includes(currentRoute)) return null;
 
   const renderTab = (route: any) => {
     const { options } = descriptors[route.key];
@@ -127,8 +128,6 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
     );
   };
 
-  // Sort to enforce visual order: Bookings | Explore (center) | Profile
-  // regardless of declaration order in <Tabs>
   const TAB_ORDER = ["bookings", "explore", "profile"];
   const visibleTabs = TAB_ORDER.map((name) =>
     state.routes.find((r: any) => r.name === name),
@@ -152,21 +151,19 @@ export default function ConsumerLayout() {
       tabBar={(props) => <CustomTabBar {...props} />}
       screenOptions={{ headerShown: false }}
     >
-      {/*
-        Explore is listed FIRST so it is the initial/default screen.
-        Tab bar visual order is driven by visibleTabs filter above
-        which preserves: Bookings | Explore (center FAB) | Profile.
-      */}
+      {/* ── Visible tabs ── */}
       <Tabs.Screen name="explore" options={{ title: "Explore" }} />
       <Tabs.Screen name="bookings" options={{ title: "Bookings" }} />
       <Tabs.Screen name="profile" options={{ title: "Profile" }} />
 
-      {/* Stack-style screens — hidden from tab bar */}
+      {/* ── Hidden screens ── */}
       <Tabs.Screen name="restaurant/[id]" options={{ href: null }} />
       <Tabs.Screen name="booking/[id]" options={{ href: null }} />
       <Tabs.Screen name="payment" options={{ href: null }} />
-      <Tabs.Screen name="profile-menu" options={{ href: null }} />
       <Tabs.Screen name="location-selector" options={{ href: null }} />
+      <Tabs.Screen name="favourites" options={{ href: null }} />
+      <Tabs.Screen name="notifications" options={{ href: null }} />
+      <Tabs.Screen name="search" options={{ href: null }} />
     </Tabs>
   );
 }
@@ -197,6 +194,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(0,0,0,0.06)",
     marginBottom: 6,
+    overflow: "visible",
   },
   tabItem: {
     flex: 1,
@@ -233,7 +231,6 @@ const styles = StyleSheet.create({
   tabLabel: { fontSize: 10, fontWeight: "600", letterSpacing: 0.1 },
   tabLabelActive: { color: "#FF5A5F" },
   tabLabelInactive: { color: "#8A95A3" },
-
   fabSpacer: {
     flex: 1,
     alignItems: "center",

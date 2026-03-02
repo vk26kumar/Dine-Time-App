@@ -26,18 +26,58 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useAuth } from "../../contexts/AuthContext";
 import { Booking } from "../../types";
+import { notificationService } from "../../services/notificationService";
 
-const STATUS_CONFIG: Record<string, { color: string; bg: string; icon: any }> =
-  {
-    confirmed: { color: "#10B981", bg: "#ECFDF5", icon: "check-circle" },
-    cancelled: { color: "#EF4444", bg: "#FEF2F2", icon: "cancel" },
-    completed: { color: "#6B2FA0", bg: "#F5F0FF", icon: "task-alt" },
-    "no-show": { color: "#8A95A3", bg: "#F5F6F8", icon: "warning" },
-    pending: { color: "#FF9F43", bg: "#FFF8F0", icon: "schedule" },
-  };
+// ─── TAB BAR HEIGHT ────────────────────────────────────────────────────────────
+// Adjust this value to match your actual tab bar height
+const TAB_BAR_HEIGHT = 80;
+
+// ─── Status config ─────────────────────────────────────────────────────────────
+const STATUS_CONFIG: Record<
+  string,
+  { color: string; bg: string; icon: any; label: string }
+> = {
+  confirmed: {
+    color: "#0EA5E9",
+    bg: "#F0F9FF",
+    icon: "check-circle",
+    label: "Confirmed",
+  },
+  cancelled: {
+    color: "#F43F5E",
+    bg: "#FFF1F2",
+    icon: "cancel",
+    label: "Cancelled",
+  },
+  completed: {
+    color: "#8B5CF6",
+    bg: "#F5F3FF",
+    icon: "task-alt",
+    label: "Completed",
+  },
+  "no-show": {
+    color: "#94A3B8",
+    bg: "#F8FAFC",
+    icon: "warning",
+    label: "No Show",
+  },
+  pending: {
+    color: "#F59E0B",
+    bg: "#FFFBEB",
+    icon: "schedule",
+    label: "Pending",
+  },
+};
 
 const FILTERS = ["all", "confirmed", "completed", "cancelled"] as const;
 type Filter = (typeof FILTERS)[number];
+
+const FILTER_COLORS: Record<string, readonly [string, string]> = {
+  all: ["#6366F1", "#8B5CF6"],
+  confirmed: ["#0EA5E9", "#38BDF8"],
+  completed: ["#8B5CF6", "#A78BFA"],
+  cancelled: ["#F43F5E", "#FB7185"],
+};
 
 export default function OwnerManageBookingsScreen() {
   const { user } = useAuth();
@@ -121,8 +161,10 @@ export default function OwnerManageBookingsScreen() {
     }
   };
 
+  const getBooking = (id: string) => bookings.find((b) => b.id === id);
+
   const confirmBooking = (b: Booking) =>
-    Alert.alert("Confirm Booking", `Confirm for ${b.restaurantName}?`, [
+    Alert.alert("Confirm Booking", `Confirm booking for ${b.restaurantName}?`, [
       { text: "Cancel", style: "cancel" },
       {
         text: "Confirm",
@@ -132,41 +174,57 @@ export default function OwnerManageBookingsScreen() {
     ]);
 
   const completeBooking = (id: string) =>
-    Alert.alert("Complete Booking", "Mark as completed?", [
+    Alert.alert("Complete Booking", "Mark this booking as completed?", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Complete",
-        onPress: () =>
-          updateBooking(
+        onPress: async () => {
+          await updateBooking(
             id,
             { status: "completed", completedAt: Timestamp.now() },
             "Marked as completed.",
-          ),
+          );
+          const booking = getBooking(id);
+          if (booking?.userId)
+            await notificationService.notifyBookingCompleted(
+              booking.userId,
+              booking.restaurantName,
+              id,
+            );
+        },
       },
     ]);
 
   const noShowBooking = (id: string) =>
-    Alert.alert("No Show", "Mark as no-show?", [
+    Alert.alert("No Show", "Mark this booking as no-show?", [
       { text: "Cancel", style: "cancel" },
       {
         text: "No Show",
         style: "destructive",
-        onPress: () =>
-          updateBooking(id, { status: "no-show" }, "Marked as no-show."),
+        onPress: async () => {
+          await updateBooking(id, { status: "no-show" }, "Marked as no-show.");
+          const booking = getBooking(id);
+          if (booking?.userId)
+            await notificationService.notifyBookingNoShow(
+              booking.userId,
+              booking.restaurantName,
+              id,
+            );
+        },
       },
     ]);
 
   const cancelBooking = (id: string) =>
     Alert.alert(
       "Cancel Booking",
-      "Cancel this booking? Customer will be notified.",
+      "Cancel this booking? The customer will be notified.",
       [
         { text: "Keep", style: "cancel" },
         {
-          text: "Cancel",
+          text: "Cancel Booking",
           style: "destructive",
-          onPress: () =>
-            updateBooking(
+          onPress: async () => {
+            await updateBooking(
               id,
               {
                 status: "cancelled",
@@ -174,7 +232,15 @@ export default function OwnerManageBookingsScreen() {
                 cancelledBy: "restaurant",
               },
               "Booking cancelled.",
-            ),
+            );
+            const booking = getBooking(id);
+            if (booking?.userId)
+              await notificationService.notifyBookingCancelled(
+                booking.userId,
+                booking.restaurantName,
+                id,
+              );
+          },
         },
       ],
     );
@@ -185,166 +251,191 @@ export default function OwnerManageBookingsScreen() {
     confirmed: bookings.filter((b) => b.status === "confirmed").length,
     completed: bookings.filter((b) => b.status === "completed").length,
     cancelled: bookings.filter((b) => b.status === "cancelled").length,
+    pending: bookings.filter((b) => b.status === "no-show").length,
   };
 
+  // ─── Booking card ────────────────────────────────────────────────────────────
   const renderBooking = ({ item }: { item: Booking }) => {
     const cfg = STATUS_CONFIG[item.status] ?? STATUS_CONFIG.pending;
     const isFree = item.payment?.amount === 0;
     const isUpdating = updating === item.id;
+    const dateStr =
+      item.date?.toLocaleDateString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      }) || "N/A";
 
     return (
       <View style={styles.card}>
-        <View style={[styles.cardAccent, { backgroundColor: cfg.color }]} />
+        {/* Top strip */}
+        <View style={[styles.cardStrip, { backgroundColor: cfg.color }]} />
 
-        {/* Header */}
-        <View style={styles.cardHeader}>
-          <View style={styles.cardHeaderLeft}>
-            <View style={styles.restaurantIconWrap}>
-              <MaterialIcons name="restaurant" size={15} color="#FF5A5F" />
+        {/* Card header */}
+        <View style={styles.cardHead}>
+          <View style={styles.cardHeadLeft}>
+            <View
+              style={[styles.restaurantAvatar, { backgroundColor: cfg.bg }]}
+            >
+              <MaterialIcons name="storefront" size={18} color={cfg.color} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.restaurantName} numberOfLines={1}>
                 {item.restaurantName}
               </Text>
-              <Text style={styles.bookingId}>
-                #{item.id.slice(-8).toUpperCase()}
+              <Text style={styles.bookingRef}>
+                REF #{item.id.slice(-8).toUpperCase()}
               </Text>
             </View>
           </View>
-          <View style={[styles.statusBadge, { backgroundColor: cfg.bg }]}>
-            <MaterialIcons name={cfg.icon} size={11} color={cfg.color} />
-            <Text style={[styles.statusText, { color: cfg.color }]}>
-              {item.status.toUpperCase()}
+          <View style={[styles.statusPill, { backgroundColor: cfg.bg }]}>
+            <View style={[styles.statusDot, { backgroundColor: cfg.color }]} />
+            <Text style={[styles.statusPillText, { color: cfg.color }]}>
+              {cfg.label}
             </Text>
           </View>
         </View>
 
-        <View style={styles.divider} />
-
-        {/* Guest + Booking info */}
-        <View style={styles.detailsGrid}>
-          <DetailCell
-            icon="person"
-            label="Guest"
-            value={item.userName || "Guest"}
-          />
-          <DetailCell
-            icon="phone"
-            label="Phone"
-            value={item.userPhone || "N/A"}
-          />
-          <DetailCell
-            icon="calendar-today"
-            label="Date"
-            value={
-              item.date?.toLocaleDateString("en-IN", {
-                day: "2-digit",
-                month: "short",
-                year: "numeric",
-              }) || "N/A"
-            }
-          />
-          <DetailCell
-            icon="schedule"
-            label="Time"
-            value={item.timeSlot || "N/A"}
-          />
-          <DetailCell
-            icon="people"
-            label="Guests"
-            value={`${item.numberOfGuests} people`}
-          />
-          <DetailCell
-            icon="table-restaurant"
-            label="Tables"
-            value={`${item.tableIds?.length ?? 1} table`}
-          />
-          {item.occasion ? (
-            <DetailCell
-              icon="celebration"
-              label="Occasion"
-              value={item.occasion}
-            />
-          ) : null}
+        {/* Main info row */}
+        <View style={styles.infoRow}>
+          <InfoChip icon="calendar-today" value={dateStr} />
+          <InfoChip icon="schedule" value={item.timeSlot || "N/A"} />
+          <InfoChip icon="people" value={`${item.numberOfGuests} guests`} />
         </View>
 
+        {/* Guest details */}
+        <View style={styles.guestRow}>
+          <View style={styles.guestItem}>
+            <MaterialIcons name="person-outline" size={13} color="#94A3B8" />
+            <Text style={styles.guestLabel}>Guest</Text>
+            <Text style={styles.guestValue}>{item.userName || "Guest"}</Text>
+          </View>
+          <View style={styles.guestDivider} />
+          <View style={styles.guestItem}>
+            <MaterialIcons name="phone-iphone" size={13} color="#94A3B8" />
+            <Text style={styles.guestLabel}>Phone</Text>
+            <Text style={styles.guestValue}>{item.userPhone || "N/A"}</Text>
+          </View>
+          <View style={styles.guestDivider} />
+          <View style={styles.guestItem}>
+            <MaterialIcons name="table-restaurant" size={13} color="#94A3B8" />
+            <Text style={styles.guestLabel}>Tables</Text>
+            <Text style={styles.guestValue}>{item.tableIds?.length ?? 1}</Text>
+          </View>
+        </View>
+
+        {/* Occasion tag */}
+        {item.occasion ? (
+          <View style={styles.occasionTag}>
+            <MaterialIcons name="celebration" size={12} color="#8B5CF6" />
+            <Text style={styles.occasionText}>{item.occasion}</Text>
+          </View>
+        ) : null}
+
+        {/* Special requests */}
         {item.specialRequests ? (
           <View style={styles.requestBox}>
-            <MaterialIcons name="notes" size={12} color="#6B2FA0" />
+            <MaterialIcons
+              name="chat-bubble-outline"
+              size={12}
+              color="#64748B"
+            />
             <Text style={styles.requestText}>{item.specialRequests}</Text>
           </View>
         ) : null}
 
-        <View style={styles.divider} />
-
-        {/* Payment */}
-        <View style={styles.paymentRow}>
-          <View>
-            <Text style={styles.paymentLabel}>PAYMENT</Text>
+        {/* Payment footer */}
+        <View style={styles.cardFooter}>
+          <View style={styles.paymentInfo}>
+            <Text style={styles.paymentMethodLabel}>PAYMENT</Text>
             <View style={styles.paymentStatusRow}>
               <View
                 style={[
-                  styles.paymentDot,
+                  styles.paymentBadge,
                   {
                     backgroundColor:
                       item.payment?.status === "success"
-                        ? "#10B981"
-                        : "#FF9F43",
+                        ? "#ECFDF5"
+                        : "#FFFBEB",
                   },
                 ]}
-              />
-              <Text style={styles.paymentStatus}>
-                {(item.payment?.status || "pending").toUpperCase()}
-              </Text>
+              >
+                <MaterialIcons
+                  name={
+                    item.payment?.status === "success" ? "verified" : "pending"
+                  }
+                  size={11}
+                  color={
+                    item.payment?.status === "success" ? "#10B981" : "#F59E0B"
+                  }
+                />
+                <Text
+                  style={[
+                    styles.paymentBadgeText,
+                    {
+                      color:
+                        item.payment?.status === "success"
+                          ? "#10B981"
+                          : "#F59E0B",
+                    },
+                  ]}
+                >
+                  {(item.payment?.status || "pending").toUpperCase()}
+                </Text>
+              </View>
             </View>
           </View>
-          {isFree ? (
-            <Text style={styles.amountFree}>FREE</Text>
-          ) : (
-            <Text style={styles.amountValue}>₹{item.payment?.amount}</Text>
-          )}
+          <View style={styles.amountBox}>
+            {isFree ? (
+              <Text style={styles.amountFree}>FREE</Text>
+            ) : (
+              <>
+                <Text style={styles.amountCurrency}>₹</Text>
+                <Text style={styles.amountValue}>{item.payment?.amount}</Text>
+              </>
+            )}
+          </View>
         </View>
 
         {/* Action buttons — only for confirmed */}
         {item.status === "confirmed" && (
-          <>
-            <View style={styles.divider} />
-            <View style={styles.actionRow}>
-              <TouchableOpacity
-                style={styles.actionComplete}
-                onPress={() => completeBooking(item.id)}
-                disabled={isUpdating}
-                activeOpacity={0.85}
-              >
-                {isUpdating ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <>
-                    <MaterialIcons name="done-all" size={14} color="#FFFFFF" />
-                    <Text style={styles.actionCompleteText}>Complete</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.actionNoShow}
-                onPress={() => noShowBooking(item.id)}
-                disabled={isUpdating}
-                activeOpacity={0.85}
-              >
-                <MaterialIcons name="warning" size={14} color="#8A95A3" />
-                <Text style={styles.actionNoShowText}>No Show</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.actionCancel}
-                onPress={() => cancelBooking(item.id)}
-                disabled={isUpdating}
-                activeOpacity={0.85}
-              >
-                <MaterialIcons name="close" size={14} color="#EF4444" />
-                <Text style={styles.actionCancelText}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
-          </>
+          <View style={styles.actionBar}>
+            <TouchableOpacity
+              style={styles.btnComplete}
+              onPress={() => completeBooking(item.id)}
+              disabled={isUpdating}
+              activeOpacity={0.8}
+            >
+              {isUpdating ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <>
+                  <MaterialIcons name="done-all" size={15} color="#FFFFFF" />
+                  <Text style={styles.btnCompleteText}>Complete</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.btnNoShow}
+              onPress={() => noShowBooking(item.id)}
+              disabled={isUpdating}
+              activeOpacity={0.8}
+            >
+              <MaterialIcons name="person-off" size={15} color="#64748B" />
+              <Text style={styles.btnNoShowText}>No Show</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.btnCancel}
+              onPress={() => cancelBooking(item.id)}
+              disabled={isUpdating}
+              activeOpacity={0.8}
+            >
+              <MaterialIcons name="block" size={15} color="#F43F5E" />
+              <Text style={styles.btnCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
         )}
       </View>
     );
@@ -352,85 +443,97 @@ export default function OwnerManageBookingsScreen() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#1A0A2E" />
+      <StatusBar barStyle="light-content" backgroundColor="#0F172A" />
 
-      {/* Header */}
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
       <LinearGradient
-        colors={["#1A0A2E", "#3D1A6E", "#6B2FA0"]}
+        colors={["#0F172A", "#1E293B", "#0F172A"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={[styles.header, { paddingTop: insets.top + 14 }]}
+        style={[styles.header, { paddingTop: insets.top + 12 }]}
       >
-        <View style={styles.headerOrb1} />
-        <View style={styles.headerOrb2} />
+        {/* Decorative blobs */}
+        <View style={styles.blob1} />
+        <View style={styles.blob2} />
 
         <View style={styles.headerTopRow}>
-          <Text style={styles.headerTitle}>Manage Bookings</Text>
-          <View style={styles.totalPill}>
-            <Text style={styles.totalPillText}>{bookings.length} total</Text>
+          <View>
+            <Text style={styles.headerEyebrow}>Restaurant Dashboard</Text>
+            <Text style={styles.headerTitle}>Bookings</Text>
+          </View>
+          <View style={styles.totalBadge}>
+            <Text style={styles.totalBadgeNum}>{bookings.length}</Text>
+            <Text style={styles.totalBadgeLabel}>Total</Text>
           </View>
         </View>
 
-        {/* Stats */}
+        {/* Stats cards */}
         <View style={styles.statsRow}>
-          {[
-            { label: "Confirmed", value: stats.confirmed, color: "#10B981" },
-            { label: "Completed", value: stats.completed, color: "#6B2FA0" },
-            { label: "Cancelled", value: stats.cancelled, color: "#EF4444" },
-          ].map((s) => (
-            <View key={s.label} style={styles.statItem}>
-              <Text style={[styles.statValue, { color: s.color }]}>
-                {s.value}
-              </Text>
-              <Text style={styles.statLabel}>{s.label}</Text>
-            </View>
-          ))}
+          <StatCard
+            label="Confirmed"
+            value={stats.confirmed}
+            color="#0EA5E9"
+            icon="check-circle"
+          />
+          <StatCard
+            label="Completed"
+            value={stats.completed}
+            color="#8B5CF6"
+            icon="task-alt"
+          />
+          <StatCard
+            label="Cancelled"
+            value={stats.cancelled}
+            color="#F43F5E"
+            icon="cancel"
+          />
+          <StatCard
+            label="Pending"
+            value={stats.pending}
+            color="#F59E0B"
+            icon="schedule"
+          />
         </View>
 
         {/* Filter tabs */}
-        <View style={styles.filterBar}>
+        <View style={styles.filterRow}>
           {FILTERS.map((f) => {
             const isActive = filter === f;
             const count =
               f === "all"
                 ? bookings.length
                 : bookings.filter((b) => b.status === f).length;
+            const colors =
+              FILTER_COLORS[f] ?? (["#6366F1", "#8B5CF6"] as const);
+            const label =
+              f === "all" ? "All" : f.charAt(0).toUpperCase() + f.slice(1);
+
             return (
               <TouchableOpacity
                 key={f}
-                style={styles.filterTabWrap}
+                style={[styles.filterTab, isActive && styles.filterTabActive]}
                 onPress={() => setFilter(f)}
-                activeOpacity={0.8}
+                activeOpacity={0.75}
               >
                 {isActive ? (
                   <LinearGradient
-                    colors={
-                      f === "cancelled"
-                        ? ["#EF4444", "#FF5A5F"]
-                        : f === "completed"
-                          ? ["#6B2FA0", "#A855F7"]
-                          : ["#FF5A5F", "#FF9F43"]
-                    }
+                    colors={colors}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
-                    style={styles.filterTabActive}
+                    style={styles.filterTabGradient}
                   >
-                    <Text style={styles.filterTabActiveText}>
-                      {f === "all"
-                        ? "All"
-                        : f.charAt(0).toUpperCase() + f.slice(1)}
-                    </Text>
-                    <View style={styles.filterCount}>
-                      <Text style={styles.filterCountText}>{count}</Text>
-                    </View>
+                    <Text style={styles.filterTabActiveText}>{label}</Text>
+                    {count > 0 && (
+                      <View style={styles.filterCountActive}>
+                        <Text style={styles.filterCountActiveText}>
+                          {count}
+                        </Text>
+                      </View>
+                    )}
                   </LinearGradient>
                 ) : (
-                  <View style={styles.filterTabInactive}>
-                    <Text style={styles.filterTabInactiveText}>
-                      {f === "all"
-                        ? "All"
-                        : f.charAt(0).toUpperCase() + f.slice(1)}
-                    </Text>
+                  <View style={styles.filterTabInner}>
+                    <Text style={styles.filterTabText}>{label}</Text>
                     {count > 0 && (
                       <View style={styles.filterCountInactive}>
                         <Text style={styles.filterCountInactiveText}>
@@ -444,18 +547,13 @@ export default function OwnerManageBookingsScreen() {
             );
           })}
         </View>
-
-        <View style={styles.accentBar}>
-          <View style={[styles.accentSeg, { backgroundColor: "#FF5A5F" }]} />
-          <View style={[styles.accentSeg, { backgroundColor: "#FF9F43" }]} />
-          <View style={[styles.accentSeg, { backgroundColor: "#A855F7" }]} />
-        </View>
       </LinearGradient>
 
+      {/* ── Content ────────────────────────────────────────────────────────── */}
       {loading ? (
         <View style={styles.loadingWrap}>
-          <ActivityIndicator size="large" color="#FF5A5F" />
-          <Text style={styles.loadingText}>Loading bookings...</Text>
+          <ActivityIndicator size="large" color="#6366F1" />
+          <Text style={styles.loadingText}>Loading bookings…</Text>
         </View>
       ) : (
         <FlatList
@@ -464,7 +562,7 @@ export default function OwnerManageBookingsScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={[
             styles.list,
-            { paddingBottom: insets.bottom + 24 },
+            { paddingBottom: insets.bottom + TAB_BAR_HEIGHT + 16 },
           ]}
           showsVerticalScrollIndicator={false}
           refreshControl={
@@ -474,25 +572,23 @@ export default function OwnerManageBookingsScreen() {
                 setRefreshing(true);
                 loadBookings();
               }}
-              colors={["#FF5A5F"]}
-              tintColor="#FF5A5F"
+              colors={["#6366F1"]}
+              tintColor="#6366F1"
             />
           }
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
               <LinearGradient
-                colors={["#1A0A2E", "#3D1A6E"]}
-                style={styles.emptyIconWrap}
+                colors={["#1E293B", "#0F172A"]}
+                style={styles.emptyIconRing}
               >
-                <MaterialIcons
-                  name="event-busy"
-                  size={32}
-                  color="rgba(255,255,255,0.6)"
-                />
+                <MaterialIcons name="event-busy" size={30} color="#475569" />
               </LinearGradient>
               <Text style={styles.emptyTitle}>No bookings found</Text>
               <Text style={styles.emptySub}>
-                Bookings for your restaurants will appear here
+                {filter === "all"
+                  ? "Bookings for your restaurants will appear here"
+                  : `No ${filter} bookings at the moment`}
               </Text>
             </View>
           }
@@ -502,338 +598,416 @@ export default function OwnerManageBookingsScreen() {
   );
 }
 
-const DetailCell = ({
-  icon,
+// ─── Sub-components ─────────────────────────────────────────────────────────
+
+const StatCard = ({
   label,
   value,
+  color,
+  icon,
 }: {
-  icon: any;
   label: string;
-  value: string;
+  value: number;
+  color: string;
+  icon: any;
 }) => (
-  <View style={styles.detailCell}>
-    <View style={styles.detailIconWrap}>
-      <MaterialIcons name={icon} size={12} color="#FF5A5F" />
-    </View>
-    <View style={{ flex: 1 }}>
-      <Text style={styles.detailLabel}>{label}</Text>
-      <Text style={styles.detailValue} numberOfLines={1}>
-        {value}
-      </Text>
-    </View>
+  <View style={[styles.statCard, { borderColor: color + "30" }]}>
+    <MaterialIcons name={icon} size={14} color={color} />
+    <Text style={[styles.statValue, { color }]}>{value}</Text>
+    <Text style={styles.statLabel}>{label}</Text>
   </View>
 );
 
+const InfoChip = ({ icon, value }: { icon: any; value: string }) => (
+  <View style={styles.infoChip}>
+    <MaterialIcons name={icon} size={12} color="#6366F1" />
+    <Text style={styles.infoChipText}>{value}</Text>
+  </View>
+);
+
+// ─── Styles ──────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F5F6F8" },
+  container: { flex: 1, backgroundColor: "#F1F5F9" },
+
+  // Header
   header: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 12,
     overflow: "hidden",
-    shadowColor: "#6B2FA0",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 10,
   },
-  headerOrb1: {
+  blob1: {
     position: "absolute",
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: "rgba(255,90,95,0.18)",
-    top: -40,
-    right: -20,
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: "rgba(99,102,241,0.12)",
+    top: -80,
+    right: -60,
   },
-  headerOrb2: {
+  blob2: {
     position: "absolute",
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    backgroundColor: "rgba(255,159,67,0.12)",
-    top: 20,
-    right: 70,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: "rgba(139,92,246,0.10)",
+    top: 40,
+    right: 80,
   },
   headerTopRow: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
-    marginBottom: 14,
+    alignItems: "flex-end",
+    paddingHorizontal: 20,
+    marginBottom: 16,
+  },
+  headerEyebrow: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.45)",
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    marginBottom: 3,
   },
   headerTitle: {
-    fontSize: 22,
-    fontWeight: "900",
+    fontSize: 28,
+    fontWeight: "800",
     color: "#FFFFFF",
-    letterSpacing: -0.5,
+    letterSpacing: -0.8,
   },
-  totalPill: {
-    backgroundColor: "rgba(255,255,255,0.15)",
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 20,
+  totalBadge: {
+    backgroundColor: "rgba(99,102,241,0.25)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
+    borderColor: "rgba(99,102,241,0.4)",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    alignItems: "center",
   },
-  totalPillText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "rgba(255,255,255,0.85)",
+  totalBadgeNum: { fontSize: 20, fontWeight: "800", color: "#A5B4FC" },
+  totalBadgeLabel: {
+    fontSize: 9,
+    fontWeight: "600",
+    color: "rgba(165,180,252,0.7)",
+    letterSpacing: 0.6,
   },
 
+  // Stats
   statsRow: {
     flexDirection: "row",
-    marginHorizontal: 16,
-    backgroundColor: "rgba(255,255,255,0.1)",
-    borderRadius: 14,
-    padding: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-  },
-  statItem: { flex: 1, alignItems: "center" },
-  statValue: { fontSize: 22, fontWeight: "900" },
-  statLabel: {
-    fontSize: 10,
-    color: "rgba(255,255,255,0.6)",
-    fontWeight: "600",
-    marginTop: 2,
-  },
-
-  filterBar: {
-    flexDirection: "row",
-    marginHorizontal: 16,
+    gap: 8,
+    paddingHorizontal: 20,
     marginBottom: 14,
-    backgroundColor: "rgba(255,255,255,0.1)",
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: "rgba(255,255,255,0.06)",
     borderRadius: 12,
-    padding: 3,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    paddingVertical: 10,
+    alignItems: "center",
     gap: 3,
   },
-  filterTabWrap: { flex: 1, borderRadius: 10, overflow: "hidden" },
-  filterTabActive: {
+  statValue: { fontSize: 18, fontWeight: "800" },
+  statLabel: {
+    fontSize: 9,
+    color: "rgba(255,255,255,0.45)",
+    fontWeight: "600",
+    letterSpacing: 0.3,
+  },
+
+  // Filters
+  filterRow: {
+    flexDirection: "row",
+    paddingHorizontal: 20,
+    paddingBottom: 18,
+    gap: 6,
+  },
+  filterTab: { flex: 1, borderRadius: 10, overflow: "hidden" },
+  filterTabActive: {},
+  filterTabGradient: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    paddingVertical: 9,
     gap: 4,
-    paddingVertical: 8,
+    borderRadius: 10,
   },
-  filterTabActiveText: { fontSize: 11, fontWeight: "800", color: "#FFFFFF" },
-  filterCount: {
-    backgroundColor: "rgba(255,255,255,0.3)",
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 8,
-  },
-  filterCountText: { fontSize: 9, fontWeight: "800", color: "#FFFFFF" },
-  filterTabInactive: {
+  filterTabInner: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    paddingVertical: 9,
     gap: 4,
-    paddingVertical: 8,
+    backgroundColor: "rgba(255,255,255,0.07)",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
   },
-  filterTabInactiveText: {
+  filterTabActiveText: { fontSize: 11, fontWeight: "700", color: "#FFFFFF" },
+  filterTabText: {
     fontSize: 11,
     fontWeight: "600",
     color: "rgba(255,255,255,0.5)",
   },
+  filterCountActive: {
+    backgroundColor: "rgba(255,255,255,0.25)",
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 6,
+  },
+  filterCountActiveText: { fontSize: 9, fontWeight: "700", color: "#FFF" },
   filterCountInactive: {
     backgroundColor: "rgba(255,255,255,0.1)",
     paddingHorizontal: 5,
     paddingVertical: 1,
-    borderRadius: 8,
+    borderRadius: 6,
   },
   filterCountInactiveText: {
     fontSize: 9,
-    fontWeight: "700",
+    fontWeight: "600",
     color: "rgba(255,255,255,0.4)",
   },
 
-  accentBar: { flexDirection: "row", height: 3 },
-  accentSeg: { flex: 1 },
-
+  // Loading / empty
   loadingWrap: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    gap: 12,
+    gap: 14,
   },
-  loadingText: { fontSize: 14, color: "#8A95A3", fontWeight: "500" },
-  list: { padding: 16, gap: 12 },
-
-  card: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    overflow: "hidden",
-    shadowColor: "#1A0A2E",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.07,
-    shadowRadius: 12,
-    elevation: 3,
-    borderWidth: 1,
-    borderColor: "#EEF0F4",
-  },
-  cardAccent: { height: 3 },
-  cardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: 14,
-    gap: 10,
-  },
-  cardHeaderLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    flex: 1,
-  },
-  restaurantIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 9,
-    backgroundColor: "#FFF0F0",
+  loadingText: { fontSize: 14, color: "#94A3B8", fontWeight: "500" },
+  emptyWrap: { paddingTop: 72, alignItems: "center", gap: 12 },
+  emptyIconRing: {
+    width: 76,
+    height: 76,
+    borderRadius: 22,
     justifyContent: "center",
     alignItems: "center",
   },
-  restaurantName: { fontSize: 14, fontWeight: "800", color: "#0F1B2D" },
-  bookingId: {
-    fontSize: 10,
-    fontWeight: "600",
-    color: "#8A95A3",
-    marginTop: 2,
-    letterSpacing: 0.4,
+  emptyTitle: { fontSize: 17, fontWeight: "700", color: "#334155" },
+  emptySub: {
+    fontSize: 13,
+    color: "#94A3B8",
+    textAlign: "center",
+    lineHeight: 20,
+    paddingHorizontal: 32,
   },
-  statusBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
+
+  // List
+  list: { padding: 16, gap: 14 },
+
+  // Card
+  card: {
+    backgroundColor: "#FFFFFF",
     borderRadius: 20,
+    overflow: "hidden",
+    shadowColor: "#64748B",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 3,
   },
-  statusText: { fontSize: 10, fontWeight: "700" },
-
-  divider: { height: 1, backgroundColor: "#EEF0F4", marginHorizontal: 14 },
-
-  detailsGrid: { flexDirection: "row", flexWrap: "wrap", padding: 14, gap: 10 },
-  detailCell: {
+  cardStrip: { height: 4 },
+  cardHead: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 7,
-    width: "47%",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 12,
   },
-  detailIconWrap: {
-    width: 24,
-    height: 24,
-    borderRadius: 7,
-    backgroundColor: "#FFF0F0",
+  cardHeadLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    flex: 1,
+  },
+  restaurantAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
     flexShrink: 0,
   },
-  detailLabel: {
-    fontSize: 9,
-    color: "#8A95A3",
+  restaurantName: { fontSize: 15, fontWeight: "800", color: "#0F172A" },
+  bookingRef: {
+    fontSize: 10,
+    color: "#94A3B8",
     fontWeight: "600",
-    letterSpacing: 0.2,
+    marginTop: 2,
+    letterSpacing: 0.5,
   },
-  detailValue: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#0F1B2D",
-    marginTop: 1,
+  statusPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+    flexShrink: 0,
   },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  statusPillText: { fontSize: 11, fontWeight: "700" },
 
+  // Info chips row
+  infoRow: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+  },
+  infoChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "#EEF2FF",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  infoChipText: { fontSize: 11, fontWeight: "700", color: "#4338CA" },
+
+  // Guest row
+  guestRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F8FAFC",
+    marginHorizontal: 16,
+    borderRadius: 12,
+    paddingVertical: 12,
+    marginBottom: 12,
+  },
+  guestItem: { flex: 1, alignItems: "center", gap: 3 },
+  guestDivider: { width: 1, height: 30, backgroundColor: "#E2E8F0" },
+  guestLabel: {
+    fontSize: 9,
+    color: "#94A3B8",
+    fontWeight: "600",
+    letterSpacing: 0.4,
+  },
+  guestValue: { fontSize: 12, fontWeight: "700", color: "#1E293B" },
+
+  // Occasion
+  occasionTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginHorizontal: 16,
+    marginBottom: 10,
+    backgroundColor: "#F5F3FF",
+    alignSelf: "flex-start",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#DDD6FE",
+  },
+  occasionText: { fontSize: 12, color: "#7C3AED", fontWeight: "600" },
+
+  // Special requests
   requestBox: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 6,
-    marginHorizontal: 14,
+    gap: 8,
+    marginHorizontal: 16,
     marginBottom: 12,
-    backgroundColor: "#F5F0FF",
-    padding: 10,
+    backgroundColor: "#F8FAFC",
+    padding: 12,
     borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#6B2FA015",
+    borderLeftWidth: 3,
+    borderLeftColor: "#CBD5E1",
   },
-  requestText: { flex: 1, fontSize: 12, color: "#6B2FA0", lineHeight: 17 },
+  requestText: { flex: 1, fontSize: 12, color: "#475569", lineHeight: 18 },
 
-  paymentRow: {
+  // Card footer (payment)
+  cardFooter: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderTopWidth: 1,
+    borderTopColor: "#F1F5F9",
   },
-  paymentLabel: {
+  paymentInfo: { gap: 4 },
+  paymentMethodLabel: {
     fontSize: 9,
-    color: "#8A95A3",
+    color: "#94A3B8",
     fontWeight: "700",
-    letterSpacing: 0.6,
-    marginBottom: 3,
+    letterSpacing: 0.8,
   },
-  paymentStatusRow: { flexDirection: "row", alignItems: "center", gap: 5 },
-  paymentDot: { width: 6, height: 6, borderRadius: 3 },
-  paymentStatus: { fontSize: 11, fontWeight: "700", color: "#0F1B2D" },
+  paymentStatusRow: { flexDirection: "row" },
+  paymentBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  paymentBadgeText: { fontSize: 10, fontWeight: "700" },
+  amountBox: { flexDirection: "row", alignItems: "flex-start" },
+  amountCurrency: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#475569",
+    marginTop: 4,
+  },
   amountValue: {
-    fontSize: 20,
-    fontWeight: "900",
-    color: "#0F1B2D",
-    letterSpacing: -0.5,
+    fontSize: 26,
+    fontWeight: "800",
+    color: "#0F172A",
+    letterSpacing: -1,
   },
-  amountFree: { fontSize: 20, fontWeight: "900", color: "#10B981" },
+  amountFree: { fontSize: 20, fontWeight: "800", color: "#10B981" },
 
-  actionRow: { flexDirection: "row", gap: 8, padding: 14 },
-  actionComplete: {
-    flex: 1,
+  // Action bar
+  actionBar: {
     flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 5,
-    backgroundColor: "#6B2FA0",
-    paddingVertical: 10,
-    borderRadius: 10,
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderTopWidth: 1,
+    borderTopColor: "#F1F5F9",
   },
-  actionCompleteText: { fontSize: 12, fontWeight: "700", color: "#FFFFFF" },
-  actionNoShow: {
+  btnComplete: {
+    flex: 1.4,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: "#6366F1",
+    paddingVertical: 11,
+    borderRadius: 12,
+  },
+  btnCompleteText: { fontSize: 13, fontWeight: "700", color: "#FFFFFF" },
+  btnNoShow: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 5,
-    backgroundColor: "#F5F6F8",
-    paddingVertical: 10,
-    borderRadius: 10,
+    gap: 6,
+    backgroundColor: "#F1F5F9",
+    paddingVertical: 11,
+    borderRadius: 12,
+  },
+  btnNoShowText: { fontSize: 13, fontWeight: "700", color: "#64748B" },
+  btnCancel: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: "#FFF1F2",
+    paddingVertical: 11,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#EEF0F4",
+    borderColor: "#FFE4E6",
   },
-  actionNoShowText: { fontSize: 12, fontWeight: "700", color: "#8A95A3" },
-  actionCancel: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 5,
-    backgroundColor: "#FEF2F2",
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#EF444420",
-  },
-  actionCancelText: { fontSize: 12, fontWeight: "700", color: "#EF4444" },
-
-  emptyWrap: { flex: 1, alignItems: "center", paddingTop: 60, gap: 14 },
-  emptyIconWrap: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  emptyTitle: { fontSize: 17, fontWeight: "700", color: "#0F1B2D" },
-  emptySub: {
-    fontSize: 13,
-    color: "#8A95A3",
-    textAlign: "center",
-    lineHeight: 20,
-  },
+  btnCancelText: { fontSize: 13, fontWeight: "700", color: "#F43F5E" },
 });

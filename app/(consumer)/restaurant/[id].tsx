@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+// app/(consumer)/restaurant/[id].tsx
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -12,6 +13,8 @@ import {
   Linking,
   Platform,
   Share,
+  Alert,
+  Animated,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -19,10 +22,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../../config/firebase";
 import { MaterialIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-
-import { theme } from "../../../constants/theme";
-// ADD THIS IMPORT AT TOP
-import { Restaurant, getPriceLabel } from "../../../types";
+import { Restaurant } from "../../../types";
 
 const { width, height } = Dimensions.get("window");
 const DAY_ORDER = [
@@ -39,10 +39,12 @@ export default function RestaurantDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
+
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [hoursExpanded, setHoursExpanded] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   useEffect(() => {
     loadRestaurant();
@@ -51,20 +53,19 @@ export default function RestaurantDetailScreen() {
   const loadRestaurant = async () => {
     try {
       setLoading(true);
-      const docRef = doc(db, "restaurants", id as string);
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        const data = docSnap.data();
+      const snap = await getDoc(doc(db, "restaurants", id as string));
+      if (snap.exists()) {
+        const data = snap.data();
         setRestaurant({
           ...data,
-          id: docSnap.id,
+          id: snap.id,
           createdAt: data.createdAt?.toDate(),
           updatedAt: data.updatedAt?.toDate(),
           approvedAt: data.approvedAt?.toDate(),
         } as Restaurant);
       }
-    } catch (error) {
-      console.error(error);
+    } catch (e) {
+      console.error(e);
     } finally {
       setLoading(false);
     }
@@ -89,9 +90,15 @@ export default function RestaurantDetailScreen() {
 
   const handleGetDirections = () => {
     if (!restaurant?.address) return;
-    const encoded = encodeURIComponent(
-      `${restaurant.address.street}, ${restaurant.address.city}`,
-    );
+    const query = [
+      restaurant.address.street,
+      restaurant.address.city,
+      restaurant.address.state,
+      restaurant.address.pincode,
+    ]
+      .filter(Boolean)
+      .join(", ");
+    const encoded = encodeURIComponent(query);
     const url = Platform.select({
       ios: `maps://0,0?q=${encoded}`,
       android: `geo:0,0?q=${encoded}`,
@@ -105,20 +112,62 @@ export default function RestaurantDetailScreen() {
   const handleCall = () => {
     if (restaurant?.phone) Linking.openURL(`tel:${restaurant.phone}`);
   };
+
   const handleShare = async () => {
-    if (!restaurant) return;
+    if (!restaurant || sharing) return;
+    setSharing(true);
     try {
-      await Share.share({
-        message: `Check out ${restaurant.name} at ${restaurant.address?.street}, ${restaurant.address?.city}`,
-        title: restaurant.name,
-      });
-    } catch {}
+      const address = [restaurant.address?.street, restaurant.address?.city]
+        .filter(Boolean)
+        .join(", ");
+      const cuisines = restaurant.cuisine?.join(", ") ?? "";
+      const price =
+        restaurant.bookingFeePerPerson === 0
+          ? "Free booking"
+          : `₹${restaurant.bookingFeePerPerson}/person`;
+      const message = [
+        `🍽️ ${restaurant.name}`,
+        cuisines ? `Cuisine: ${cuisines}` : null,
+        address ? `📍 ${address}` : null,
+        `💳 ${price}`,
+        restaurant.phone ? `📞 ${restaurant.phone}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      const result = await Share.share(
+        Platform.select({
+          ios: {
+            message,
+            title: restaurant.name,
+          },
+          android: {
+            message: `${restaurant.name}\n${message}`,
+            title: restaurant.name,
+          },
+        })!,
+        {
+          dialogTitle: `Share ${restaurant.name}`,
+          subject: `Check out ${restaurant.name}`,
+        },
+      );
+
+      // result.action is 'sharedAction' | 'dismissedAction'
+      // No-op — just let the native sheet handle it
+    } catch (e: any) {
+      // User cancelled — not an error worth alerting
+      if (e?.message && !e.message.includes("cancel")) {
+        Alert.alert("Couldn't share", "Please try again.");
+      }
+    } finally {
+      setSharing(false);
+    }
   };
+
   const handleBookNow = () => {
     if (restaurant) router.push(`/(consumer)/booking/${restaurant.id}`);
   };
 
-  // ── Loading ──
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -134,7 +183,6 @@ export default function RestaurantDetailScreen() {
     );
   }
 
-  // ── Error ──
   if (!restaurant) {
     return (
       <View style={[styles.errorContainer, { paddingTop: insets.top }]}>
@@ -198,7 +246,7 @@ export default function RestaurantDetailScreen() {
           style={styles.bottomGradient}
         />
 
-        {/* Top Actions — respects status bar via insets.top */}
+        {/* Top actions — back + share only */}
         <View style={[styles.imageTopActions, { top: insets.top + 10 }]}>
           <TouchableOpacity
             style={styles.imageActionBtn}
@@ -206,17 +254,22 @@ export default function RestaurantDetailScreen() {
           >
             <MaterialIcons name="arrow-back" size={22} color="#FFF" />
           </TouchableOpacity>
-          <View style={styles.imageTopRight}>
-            <TouchableOpacity
-              style={styles.imageActionBtn}
-              onPress={handleShare}
-            >
+
+          {/* Share button with loading state */}
+          <TouchableOpacity
+            style={styles.imageActionBtn}
+            onPress={handleShare}
+            disabled={sharing}
+            activeOpacity={0.8}
+          >
+            {sharing ? (
+              <ActivityIndicator size="small" color="#FFF" />
+            ) : (
               <MaterialIcons name="share" size={22} color="#FFF" />
-            </TouchableOpacity>
-          </View>
+            )}
+          </TouchableOpacity>
         </View>
 
-        {/* Photo counter */}
         {allImages.length > 1 && (
           <View style={[styles.imageCounter, { top: insets.top + 16 }]}>
             <MaterialIcons name="photo-library" size={12} color="#FFF" />
@@ -226,7 +279,6 @@ export default function RestaurantDetailScreen() {
           </View>
         )}
 
-        {/* Dot indicators */}
         {allImages.length > 1 && (
           <View style={styles.imageIndicator}>
             {allImages.map((_, i) => (
@@ -241,7 +293,6 @@ export default function RestaurantDetailScreen() {
           </View>
         )}
 
-        {/* Name + Status overlay */}
         <View style={styles.heroInfo}>
           <View style={styles.heroInfoTop}>
             <Text style={styles.heroName} numberOfLines={2}>
@@ -279,7 +330,7 @@ export default function RestaurantDetailScreen() {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* ── Quick Actions ── */}
+        {/* ── Quick Actions — Directions, Call, Share (no Save) ── */}
         <View style={styles.quickActions}>
           {[
             {
@@ -288,8 +339,6 @@ export default function RestaurantDetailScreen() {
               action: handleGetDirections,
             },
             { icon: "call", label: "Call", action: handleCall },
-            { icon: "share", label: "Share", action: handleShare },
-            { icon: "favorite-border", label: "Save", action: () => {} },
           ].map((item) => (
             <TouchableOpacity
               key={item.label}
@@ -310,6 +359,26 @@ export default function RestaurantDetailScreen() {
               <Text style={styles.quickActionText}>{item.label}</Text>
             </TouchableOpacity>
           ))}
+
+          {/* Share — with spinner while sharing */}
+          <TouchableOpacity
+            style={styles.quickActionBtn}
+            onPress={handleShare}
+            activeOpacity={0.7}
+            disabled={sharing}
+          >
+            <LinearGradient
+              colors={["#FF5A5F15", "#FF9F4315"]}
+              style={styles.quickActionIcon}
+            >
+              {sharing ? (
+                <ActivityIndicator size="small" color="#FF5A5F" />
+              ) : (
+                <MaterialIcons name="share" size={20} color="#FF5A5F" />
+              )}
+            </LinearGradient>
+            <Text style={styles.quickActionText}>Share</Text>
+          </TouchableOpacity>
         </View>
 
         {/* ── About ── */}
@@ -393,7 +462,6 @@ export default function RestaurantDetailScreen() {
                   </LinearGradient>
                 </TouchableOpacity>
               ) : null}
-
               {restaurant.email ? (
                 <TouchableOpacity
                   style={[
@@ -450,7 +518,6 @@ export default function RestaurantDetailScreen() {
             </View>
           </TouchableOpacity>
 
-          {/* Today Card */}
           <View style={styles.todayCard}>
             <LinearGradient
               colors={["#FF5A5F", "#FF9F43"]}
@@ -487,8 +554,8 @@ export default function RestaurantDetailScreen() {
                   restaurant.operatingHours[
                     day as keyof typeof restaurant.operatingHours
                   ];
-                if (!hours) return null;
                 const isToday = todayName === day;
+                if (!hours) return null;
                 return (
                   <View
                     key={day}
@@ -523,7 +590,7 @@ export default function RestaurantDetailScreen() {
         </View>
 
         {/* ── Amenities ── */}
-        {restaurant.amenities && restaurant.amenities.length > 0 ? (
+        {(restaurant.amenities?.length ?? 0) > 0 ? (
           <View style={styles.section}>
             <SectionTitle title="Amenities" />
             <View style={styles.amenitiesGrid}>
@@ -540,7 +607,7 @@ export default function RestaurantDetailScreen() {
         ) : null}
 
         {/* ── Features ── */}
-        {restaurant.features && restaurant.features.length > 0 ? (
+        {(restaurant.features?.length ?? 0) > 0 ? (
           <View style={styles.section}>
             <SectionTitle title="Features" />
             <View style={styles.tagsWrap}>
@@ -609,7 +676,7 @@ export default function RestaurantDetailScreen() {
         <View style={{ height: 110 }} />
       </ScrollView>
 
-      {/* ── Bottom CTA — respects home indicator ── */}
+      {/* ── Bottom CTA ── */}
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 14 }]}>
         <View style={styles.priceInfo}>
           {restaurant.bookingFeePerPerson === 0 ? (
@@ -649,7 +716,8 @@ export default function RestaurantDetailScreen() {
   );
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ── Sub-components ────────────────────────────────────────────────────────────
+
 const SectionTitle = ({ title }: { title: string }) => (
   <View style={styles.sectionTitleLeft}>
     <View style={styles.sectionDot} />
@@ -688,11 +756,10 @@ const BookingInfoRow = ({
   </View>
 );
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
+// ── Styles ────────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F5F6F8" },
-
-  // Loading
   loadingContainer: { flex: 1 },
   loadingGradient: {
     flex: 1,
@@ -715,8 +782,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginTop: 8,
   },
-
-  // Error
   errorContainer: {
     flex: 1,
     justifyContent: "center",
@@ -744,7 +809,6 @@ const styles = StyleSheet.create({
   },
   errorBtnText: { fontSize: 14, fontWeight: "700", color: "#FFF" },
 
-  // Hero
   imageContainer: { width, position: "relative" },
   image: { width },
   topGradient: { position: "absolute", top: 0, left: 0, right: 0, height: 120 },
@@ -755,6 +819,7 @@ const styles = StyleSheet.create({
     right: 0,
     height: 160,
   },
+
   imageTopActions: {
     position: "absolute",
     left: 0,
@@ -763,7 +828,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 16,
   },
-  imageTopRight: { flexDirection: "row", gap: 8 },
   imageActionBtn: {
     width: 40,
     height: 40,
@@ -774,6 +838,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.15)",
   },
+
   imageCounter: {
     position: "absolute",
     alignSelf: "center",
@@ -800,6 +865,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.4)",
   },
   indicatorDotActive: { backgroundColor: "#FFF", width: 18 },
+
   heroInfo: {
     position: "absolute",
     bottom: 0,
@@ -856,36 +922,7 @@ const styles = StyleSheet.create({
   openText: { color: "#6EE7B7" },
   closedText: { color: "#FCA5A5" },
 
-  // Stats
-  statsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFF",
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    borderBottomWidth: 6,
-    borderBottomColor: "#F5F6F8",
-  },
-  statItem: { flex: 1, alignItems: "center", gap: 6 },
-  statDivider: { width: 1, height: 34, backgroundColor: "#EEF0F4" },
-  ratingBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    gap: 3,
-  },
-  ratingText: { fontSize: 13, fontWeight: "800", color: "#FFF" },
-  statLabel: {
-    fontSize: 11,
-    color: "#8A95A3",
-    fontWeight: "500",
-    textAlign: "center",
-  },
-  priceRangeValue: { fontSize: 16, fontWeight: "800", color: "#0F1B2D" },
-
-  // Quick Actions
+  // Quick actions — now 3 items instead of 4
   quickActions: {
     flexDirection: "row",
     backgroundColor: "#FFF",
@@ -904,7 +941,6 @@ const styles = StyleSheet.create({
   },
   quickActionText: { fontSize: 11, fontWeight: "600", color: "#0F1B2D" },
 
-  // Sections
   content: { flex: 1 },
   section: {
     backgroundColor: "#FFF",
@@ -935,9 +971,9 @@ const styles = StyleSheet.create({
   },
   hoursToggle: { flexDirection: "row", alignItems: "center", gap: 3 },
   hoursToggleText: { fontSize: 13, color: "#FF5A5F", fontWeight: "600" },
+
   description: { fontSize: 14, color: "#8A95A3", lineHeight: 22 },
 
-  // Location
   locationCard: {
     flexDirection: "row",
     gap: 12,
@@ -974,7 +1010,6 @@ const styles = StyleSheet.create({
   },
   directionsBtnText: { fontSize: 14, fontWeight: "700", color: "#FF5A5F" },
 
-  // Contact
   contactCard: {
     borderRadius: 16,
     borderWidth: 1,
@@ -1011,7 +1046,6 @@ const styles = StyleSheet.create({
   },
   contactActionText: { fontSize: 12, fontWeight: "700", color: "#FFF" },
 
-  // Hours
   todayCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -1045,6 +1079,7 @@ const styles = StyleSheet.create({
   closedChipText: { fontSize: 12, fontWeight: "700", color: "#EF4444" },
   openTimeWrap: { flexDirection: "row", alignItems: "center" },
   openTimeText: { fontSize: 14, fontWeight: "600", color: "#10B981" },
+
   hoursCard: {
     borderRadius: 14,
     borderWidth: 1,
@@ -1066,7 +1101,6 @@ const styles = StyleSheet.create({
   hoursTimeTextToday: { color: "#FF5A5F", fontWeight: "600" },
   closedHoursText: { fontSize: 14, color: "#EF4444", fontWeight: "600" },
 
-  // Amenities
   amenitiesGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   amenityItem: {
     flexDirection: "row",
@@ -1084,7 +1118,6 @@ const styles = StyleSheet.create({
   },
   amenityText: { fontSize: 13, color: "#0F1B2D", flex: 1 },
 
-  // Features
   tagsWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   featureTag: {
     backgroundColor: "#FFF0F0",
@@ -1096,7 +1129,6 @@ const styles = StyleSheet.create({
   },
   featureTagText: { fontSize: 12, color: "#FF5A5F", fontWeight: "600" },
 
-  // Booking Info
   bookingInfoCard: {
     borderRadius: 16,
     borderWidth: 1,
@@ -1143,7 +1175,6 @@ const styles = StyleSheet.create({
   },
   nonRefundBadgeText: { fontSize: 11, fontWeight: "700", color: "#EF4444" },
 
-  // Bottom Bar
   bottomBar: {
     flexDirection: "row",
     alignItems: "center",
