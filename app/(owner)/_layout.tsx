@@ -41,6 +41,9 @@ function RegisterRestaurantButton() {
 function CustomTabBar({ state, descriptors, navigation }: any) {
   const insets = useSafeAreaInsets();
 
+  // ── Safety guard: if routes is not ready, render nothing ──
+  if (!state?.routes) return null;
+
   const tabs = state.routes.filter(
     (route: any) => !route.name.includes("register-restaurant"),
   );

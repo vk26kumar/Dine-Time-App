@@ -962,7 +962,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     color: "#FF5A5F",
-    textDecorationLine: "underline",
     textDecorationColor: "#FF5A5F",
   },
 });
