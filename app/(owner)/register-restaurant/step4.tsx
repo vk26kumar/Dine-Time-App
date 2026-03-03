@@ -41,7 +41,17 @@ export default function RegisterStep4() {
   const params = useLocalSearchParams();
   const insets = useSafeAreaInsets();
 
-  const [tables, setTables] = useState<Table[]>([]);
+  const isEdit = params.isEdit === "true";
+
+  // ── Pre-fill tables from params if in edit mode ──
+  const [tables, setTables] = useState<Table[]>(() => {
+    try {
+      const raw = params.tables as string;
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return [];
+  });
+
   const [showForm, setShowForm] = useState(false);
   const [tableNumber, setTableNumber] = useState("");
   const [capacity, setCapacity] = useState("2");
@@ -125,7 +135,9 @@ export default function RegisterStep4() {
             <MaterialIcons name="arrow-back" size={22} color="#FFF" />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
-            <Text style={styles.headerTitle}>Add Restaurant</Text>
+            <Text style={styles.headerTitle}>
+              {isEdit ? "Edit Restaurant" : "Add Restaurant"}
+            </Text>
             <Text style={styles.headerSub}>Step 4 of 5 — Tables</Text>
           </View>
           <View style={{ width: 38 }} />

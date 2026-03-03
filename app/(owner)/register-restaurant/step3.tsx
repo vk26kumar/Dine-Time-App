@@ -70,7 +70,17 @@ export default function RegisterStep3() {
   const params = useLocalSearchParams();
   const insets = useSafeAreaInsets();
 
-  const [hours, setHours] = useState<Record<string, DayHours>>(DEFAULT_HOURS);
+  const isEdit = params.isEdit === "true";
+
+  // ── Pre-fill operating hours from params if available ──
+  const [hours, setHours] = useState<Record<string, DayHours>>(() => {
+    try {
+      const raw = params.operatingHours as string;
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return DEFAULT_HOURS;
+  });
+
   const [picker, setPicker] = useState<{
     day: string;
     type: "open" | "close";
@@ -123,7 +133,9 @@ export default function RegisterStep3() {
             <MaterialIcons name="arrow-back" size={22} color="#FFF" />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
-            <Text style={styles.headerTitle}>Add Restaurant</Text>
+            <Text style={styles.headerTitle}>
+              {isEdit ? "Edit Restaurant" : "Add Restaurant"}
+            </Text>
             <Text style={styles.headerSub}>Step 3 of 5 — Operating Hours</Text>
           </View>
           <View style={{ width: 38 }} />

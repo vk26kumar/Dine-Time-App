@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -8,16 +8,18 @@ import {
   TouchableOpacity,
   Alert,
   StatusBar,
+  ActivityIndicator,
 } from "react-native";
 import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { MaterialIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "../../../config/firebase";
 
-// Aligned with Restaurant type — cuisine: string[]
 const CUISINES = [
   { name: "Indian", emoji: "🍛" },
   { name: "Chinese", emoji: "🍜" },
@@ -33,7 +35,6 @@ const CUISINES = [
   { name: "Korean", emoji: "🥘" },
 ];
 
-// bookingFeePerPerson replaces priceRange — number stored in DB
 const BOOKING_FEE_OPTIONS = [
   { label: "Budget", sublabel: "₹0 – ₹199", value: 49, tier: "₹" },
   { label: "Standard", sublabel: "₹200 – ₹499", value: 99, tier: "₹₹" },
@@ -44,17 +45,62 @@ const BOOKING_FEE_OPTIONS = [
 export default function RegisterStep1() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams();
 
+  const isEdit = params.isEdit === "true";
+  const restaurantId = params.restaurantId as string;
+
+  // ── Store full fetched restaurant data to pass forward to steps 2–5 ──
+  const existingDataRef = useRef<any>(null);
+
+  const [fetchingData, setFetchingData] = useState(isEdit);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [selectedCuisines, setSelectedCuisines] = useState<string[]>([]);
   const [selectedPreset, setSelectedPreset] = useState<number | null>(299);
   const [customFee, setCustomFee] = useState("");
-  const bookingFeePerPerson =
-    selectedPreset !== null ? selectedPreset : parseInt(customFee) || 0;
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [website, setWebsite] = useState("");
+
+  const bookingFeePerPerson =
+    selectedPreset !== null ? selectedPreset : parseInt(customFee) || 0;
+
+  // ── Fetch existing restaurant data from Firestore in edit mode ──
+  useEffect(() => {
+    if (!isEdit || !restaurantId) return;
+    const fetchRestaurant = async () => {
+      try {
+        const snap = await getDoc(doc(db, "restaurants", restaurantId));
+        if (snap.exists()) {
+          const d = snap.data();
+          existingDataRef.current = d;
+          setName(d.name ?? "");
+          setDescription(d.description ?? "");
+          setSelectedCuisines(Array.isArray(d.cuisine) ? d.cuisine : []);
+          setPhone(d.phone ?? "");
+          setEmail(d.email ?? "");
+          setWebsite(d.website ?? "");
+          const fee = d.bookingFeePerPerson ?? 299;
+          const isPreset = BOOKING_FEE_OPTIONS.some((o) => o.value === fee);
+          if (isPreset) {
+            setSelectedPreset(fee);
+            setCustomFee("");
+          } else {
+            setSelectedPreset(null);
+            setCustomFee(fee.toString());
+          }
+        } else {
+          Alert.alert("Error", "Restaurant not found.");
+        }
+      } catch (e) {
+        Alert.alert("Error", "Failed to load restaurant data.");
+      } finally {
+        setFetchingData(false);
+      }
+    };
+    fetchRestaurant();
+  }, []);
 
   const toggleCuisine = (cuisine: string) => {
     if (selectedCuisines.includes(cuisine)) {
@@ -80,9 +126,14 @@ export default function RegisterStep1() {
     if (bookingFeePerPerson < 1)
       return Alert.alert("Required", "Please set a booking fee per person");
 
+    const d = existingDataRef.current;
+
     router.push({
       pathname: "/(owner)/register-restaurant/step2",
       params: {
+        isEdit: isEdit ? "true" : "false",
+        restaurantId: restaurantId ?? "",
+        // step1 values
         name,
         description,
         cuisine: selectedCuisines.join(","),
@@ -90,15 +141,84 @@ export default function RegisterStep1() {
         phone,
         email,
         website,
+        // existing data for steps 2–5 pre-fill
+        street: d?.address?.street ?? "",
+        city: d?.address?.city ?? "",
+        state: d?.address?.state ?? "",
+        pincode: d?.address?.pincode ?? "",
+        landmark: d?.address?.landmark ?? "",
+        latitude: d?.coordinates?.latitude?.toString() ?? "",
+        longitude: d?.coordinates?.longitude?.toString() ?? "",
+        operatingHours: d?.operatingHours
+          ? JSON.stringify(d.operatingHours)
+          : "",
+        tables: d?.tables ? JSON.stringify(d.tables) : "",
+        totalCapacity: d?.totalCapacity?.toString() ?? "0",
+        existingCoverImage: d?.images?.coverImage ?? "",
+        existingGallery: d?.images?.gallery
+          ? JSON.stringify(d.images.gallery)
+          : "",
+        amenities: d?.amenities ? JSON.stringify(d.amenities) : "",
+        features: d?.features ? JSON.stringify(d.features) : "",
       },
     });
   };
+
+  // ── Show loader while fetching in edit mode ──
+  if (fetchingData) {
+    return (
+      <SafeAreaView style={styles.container} edges={["bottom"]}>
+        <StatusBar barStyle="light-content" backgroundColor="#1A0A2E" />
+        <LinearGradient
+          colors={["#1A0A2E", "#3D1A6E", "#6B2FA0"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[styles.header, { paddingTop: insets.top + 8 }]}
+        >
+          <View style={styles.orb1} />
+          <View style={styles.orb2} />
+          <View style={styles.headerRow}>
+            <TouchableOpacity
+              onPress={() => router.back()}
+              style={styles.backBtn}
+            >
+              <MaterialIcons name="arrow-back" size={22} color="#FFFFFF" />
+            </TouchableOpacity>
+            <View style={styles.headerCenter}>
+              <Text style={styles.headerTitle}>Edit Restaurant</Text>
+              <Text style={styles.headerSub}>Step 1 of 5 — Basic Info</Text>
+            </View>
+            <View style={{ width: 38 }} />
+          </View>
+          <View style={styles.progressTrack}>
+            <LinearGradient
+              colors={["#FF5A5F", "#FF9F43"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={[styles.progressFill, { width: "20%" }]}
+            />
+          </View>
+          <View style={styles.stepDots}>
+            {[1, 2, 3, 4, 5].map((i) => (
+              <View
+                key={i}
+                style={[styles.dot, i === 1 && styles.dotActive]}
+              />
+            ))}
+          </View>
+        </LinearGradient>
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator size="large" color="#FF5A5F" />
+          <Text style={styles.loadingText}>Loading restaurant data...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={["bottom"]}>
       <StatusBar barStyle="light-content" backgroundColor="#1A0A2E" />
 
-      {/* Gradient Header — extends into status bar via paddingTop: insets.top */}
       <LinearGradient
         colors={["#1A0A2E", "#3D1A6E", "#6B2FA0"]}
         start={{ x: 0, y: 0 }}
@@ -115,12 +235,13 @@ export default function RegisterStep1() {
             <MaterialIcons name="arrow-back" size={22} color="#FFFFFF" />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
-            <Text style={styles.headerTitle}>Add Restaurant</Text>
+            <Text style={styles.headerTitle}>
+              {isEdit ? "Edit Restaurant" : "Add Restaurant"}
+            </Text>
             <Text style={styles.headerSub}>Step 1 of 5 — Basic Info</Text>
           </View>
           <View style={{ width: 38 }} />
         </View>
-        {/* Progress */}
         <View style={styles.progressTrack}>
           <LinearGradient
             colors={["#FF5A5F", "#FF9F43"]}
@@ -129,7 +250,6 @@ export default function RegisterStep1() {
             style={[styles.progressFill, { width: "20%" }]}
           />
         </View>
-        {/* Step dots */}
         <View style={styles.stepDots}>
           {[1, 2, 3, 4, 5].map((i) => (
             <View key={i} style={[styles.dot, i === 1 && styles.dotActive]} />
@@ -220,7 +340,7 @@ export default function RegisterStep1() {
           </View>
         </View>
 
-        {/* Booking Fee (replaces priceRange) */}
+        {/* Booking Fee */}
         <View style={styles.card}>
           <View style={styles.fieldHeader}>
             <View style={styles.fieldIconWrap}>
@@ -270,7 +390,6 @@ export default function RegisterStep1() {
             })}
           </View>
 
-          {/* Custom fee input */}
           <View style={styles.customFeeRow}>
             <View style={styles.customFeeDivider}>
               <View style={styles.customFeeLine} />
@@ -376,7 +495,6 @@ export default function RegisterStep1() {
         <View style={{ height: 32 }} />
       </ScrollView>
 
-      {/* Bottom CTA */}
       <View style={styles.bottomBar}>
         <TouchableOpacity
           onPress={handleContinue}
@@ -403,13 +521,7 @@ const INPUT_BG = "#F8F9FC";
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F0F2F7" },
-
-  // Header
-  header: {
-    paddingHorizontal: 16,
-    paddingBottom: 20,
-    overflow: "hidden",
-  },
+  header: { paddingHorizontal: 16, paddingBottom: 20, overflow: "hidden" },
   orb1: {
     position: "absolute",
     width: 140,
@@ -460,10 +572,15 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.25)",
   },
   dotActive: { width: 20, backgroundColor: "#FF9F43" },
-
+  loadingWrap: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 12,
+  },
+  loadingText: { fontSize: 14, color: "#8A95A3", fontWeight: "500" },
   scroll: { flex: 1 },
   scrollContent: { padding: 16, gap: 12 },
-
   card: {
     backgroundColor: "#FFF",
     borderRadius: CARD_RADIUS,
@@ -474,7 +591,6 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
-
   fieldHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -499,7 +615,6 @@ const styles = StyleSheet.create({
     textAlign: "right",
     marginTop: 6,
   },
-
   input: {
     backgroundColor: INPUT_BG,
     borderRadius: 12,
@@ -511,8 +626,6 @@ const styles = StyleSheet.create({
     color: "#0F1B2D",
   },
   textArea: { minHeight: 100, paddingTop: 12 },
-
-  // Cuisine chips
   chipGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: {
     flexDirection: "row",
@@ -537,8 +650,6 @@ const styles = StyleSheet.create({
   chipEmoji: { fontSize: 14 },
   chipText: { fontSize: 13, fontWeight: "600", color: "#0F1B2D" },
   chipTextSel: { color: "#FFF" },
-
-  // Booking fee grid
   feeGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   feeCard: {
     width: "47%",
@@ -587,8 +698,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-
-  // Custom fee
   customFeeRow: { marginTop: 14, gap: 10 },
   customFeeDivider: { flexDirection: "row", alignItems: "center", gap: 10 },
   customFeeLine: { flex: 1, height: 1, backgroundColor: "#EEF0F4" },
@@ -629,8 +738,6 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     flex: 1,
   },
-
-  // Bottom bar
   bottomBar: {
     padding: 16,
     backgroundColor: "#FFF",

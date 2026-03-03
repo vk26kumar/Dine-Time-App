@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -79,16 +79,48 @@ const uploadToCloudinary = async (uri: string): Promise<string | null> => {
   }
 };
 
+// ── Check if URI is a local device file (needs upload) or already a remote URL ──
+const isLocalUri = (uri: string) =>
+  uri.startsWith("file://") || uri.startsWith("content://");
+
 export default function RegisterStep5() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const { user, userData } = useAuth();
   const insets = useSafeAreaInsets();
 
-  const [coverImage, setCoverImage] = useState<string | null>(null);
-  const [gallery, setGallery] = useState<string[]>([]);
-  const [selectedAmenities, setSelectedAmenities] = useState<string[]>([]);
-  const [selectedFeatures, setSelectedFeatures] = useState<string[]>([]);
+  const isEdit = params.isEdit === "true";
+  const restaurantId = params.restaurantId as string;
+
+  // ── Pre-fill from params ──
+  const [coverImage, setCoverImage] = useState<string | null>(
+    (params.existingCoverImage as string) || null,
+  );
+  const [gallery, setGallery] = useState<string[]>(() => {
+    try {
+      const parsed = JSON.parse(params.existingGallery as string);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
+  const [selectedAmenities, setSelectedAmenities] = useState<string[]>(() => {
+    try {
+      const parsed = JSON.parse(params.amenities as string);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
+  const [selectedFeatures, setSelectedFeatures] = useState<string[]>(() => {
+    try {
+      const parsed = JSON.parse(params.features as string);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
+
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState("");
 
@@ -140,18 +172,6 @@ export default function RegisterStep5() {
 
     setUploading(true);
     try {
-      setProgress("Uploading cover image…");
-      const coverUrl = await uploadToCloudinary(coverImage);
-      if (!coverUrl) throw new Error("Cover image upload failed");
-
-      const galleryUrls: string[] = [];
-      for (let i = 0; i < gallery.length; i++) {
-        setProgress(`Uploading gallery ${i + 1}/${gallery.length}…`);
-        const url = await uploadToCloudinary(gallery[i]);
-        if (url) galleryUrls.push(url);
-      }
-
-      setProgress("Creating restaurant…");
       const operatingHours = JSON.parse(params.operatingHours as string);
       const tables = JSON.parse(params.tables as string);
       const cuisineArray = (params.cuisine as string)
@@ -159,73 +179,159 @@ export default function RegisterStep5() {
         .filter(Boolean);
       const bookingFeePerPerson =
         parseInt(params.bookingFeePerPerson as string) || 299;
-      const searchKeywords = [
-        params.name?.toString().toLowerCase(),
-        ...cuisineArray.map((c: string) => c.toLowerCase()),
-        params.city?.toString().toLowerCase(),
-      ].filter(Boolean);
 
-      const restaurantData = {
-        ownerId: user.uid,
-        ownerName: userData?.fullName ?? "",
-        ownerContact: userData?.phoneNumber ?? "",
-        name: params.name ?? "",
-        description: params.description ?? "",
-        cuisine: cuisineArray,
-        address: {
-          street: params.street ?? "",
-          city: params.city ?? "",
-          state: params.state ?? "",
-          pincode: params.pincode ?? "",
-          landmark: params.landmark ?? "",
-        },
-        coordinates: {
-          latitude: parseFloat(params.latitude as string),
-          longitude: parseFloat(params.longitude as string),
-        },
-        phone: params.phone ?? "",
-        email: params.email ?? "",
-        website: params.website ?? "",
-        operatingHours,
-        tables,
-        totalCapacity: parseInt(params.totalCapacity as string),
-        images: { coverImage: coverUrl, gallery: galleryUrls, menuImages: [] },
-        amenities: selectedAmenities,
-        features: selectedFeatures,
-        bookingFeePerPerson,
-        cancellationPolicy: {
-          allowCancellation: true,
-          isRefundable: false,
-          minimumNoticeHours: 0,
-        },
-        status: "pending",
-        totalBookings: 0,
-        averageRating: 0,
-        totalReviews: 0,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        searchKeywords,
-      };
+      // ── EDIT MODE ──
+      if (isEdit && restaurantId) {
+        // Only upload cover if it changed to a new local file
+        let coverUrl = coverImage;
+        if (isLocalUri(coverImage)) {
+          setProgress("Uploading cover image…");
+          const uploaded = await uploadToCloudinary(coverImage);
+          if (!uploaded) throw new Error("Cover image upload failed");
+          coverUrl = uploaded;
+        }
 
-      const docRef = await addDoc(
-        collection(db, "restaurants"),
-        restaurantData,
-      );
-      await updateDoc(docRef, { id: docRef.id });
-      await updateDoc(doc(db, "users", user.uid), {
-        ownedRestaurants: arrayUnion(docRef.id),
-      });
+        // Only upload new local gallery images, keep existing remote URLs
+        const galleryUrls: string[] = [];
+        for (let i = 0; i < gallery.length; i++) {
+          if (isLocalUri(gallery[i])) {
+            setProgress(`Uploading gallery ${i + 1}/${gallery.length}…`);
+            const url = await uploadToCloudinary(gallery[i]);
+            if (url) galleryUrls.push(url);
+          } else {
+            galleryUrls.push(gallery[i]);
+          }
+        }
 
-      Alert.alert(
-        "Submitted 🎉",
-        "Your restaurant is pending admin approval.",
-        [
-          {
-            text: "OK",
-            onPress: () => router.replace("/(owner)/my-restaurants"),
+        setProgress("Saving changes…");
+        const searchKeywords = [
+          params.name?.toString().toLowerCase(),
+          ...cuisineArray.map((c: string) => c.toLowerCase()),
+          params.city?.toString().toLowerCase(),
+        ].filter(Boolean);
+
+        await updateDoc(doc(db, "restaurants", restaurantId), {
+          name: params.name ?? "",
+          description: params.description ?? "",
+          cuisine: cuisineArray,
+          address: {
+            street: params.street ?? "",
+            city: params.city ?? "",
+            state: params.state ?? "",
+            pincode: params.pincode ?? "",
+            landmark: params.landmark ?? "",
           },
-        ],
-      );
+          coordinates: {
+            latitude: parseFloat(params.latitude as string),
+            longitude: parseFloat(params.longitude as string),
+          },
+          phone: params.phone ?? "",
+          email: params.email ?? "",
+          website: params.website ?? "",
+          operatingHours,
+          tables,
+          totalCapacity: parseInt(params.totalCapacity as string),
+          images: { coverImage: coverUrl, gallery: galleryUrls, menuImages: [] },
+          amenities: selectedAmenities,
+          features: selectedFeatures,
+          bookingFeePerPerson,
+          status: "pending",
+          updatedAt: serverTimestamp(),
+          searchKeywords,
+        });
+
+        Alert.alert(
+          "Changes Submitted",
+          "Your changes have been sent to admin for review. Your restaurant will be live again once approved.",
+          [
+            {
+              text: "OK",
+              onPress: () => router.replace("/(owner)/my-restaurants"),
+            },
+          ],
+        );
+      } else {
+        // ── NEW MODE ──
+        setProgress("Uploading cover image…");
+        const coverUrl = await uploadToCloudinary(coverImage);
+        if (!coverUrl) throw new Error("Cover image upload failed");
+
+        const galleryUrls: string[] = [];
+        for (let i = 0; i < gallery.length; i++) {
+          setProgress(`Uploading gallery ${i + 1}/${gallery.length}…`);
+          const url = await uploadToCloudinary(gallery[i]);
+          if (url) galleryUrls.push(url);
+        }
+
+        setProgress("Creating restaurant…");
+        const searchKeywords = [
+          params.name?.toString().toLowerCase(),
+          ...cuisineArray.map((c: string) => c.toLowerCase()),
+          params.city?.toString().toLowerCase(),
+        ].filter(Boolean);
+
+        const restaurantData = {
+          ownerId: user.uid,
+          ownerName: userData?.fullName ?? "",
+          ownerContact: userData?.phoneNumber ?? "",
+          name: params.name ?? "",
+          description: params.description ?? "",
+          cuisine: cuisineArray,
+          address: {
+            street: params.street ?? "",
+            city: params.city ?? "",
+            state: params.state ?? "",
+            pincode: params.pincode ?? "",
+            landmark: params.landmark ?? "",
+          },
+          coordinates: {
+            latitude: parseFloat(params.latitude as string),
+            longitude: parseFloat(params.longitude as string),
+          },
+          phone: params.phone ?? "",
+          email: params.email ?? "",
+          website: params.website ?? "",
+          operatingHours,
+          tables,
+          totalCapacity: parseInt(params.totalCapacity as string),
+          images: { coverImage: coverUrl, gallery: galleryUrls, menuImages: [] },
+          amenities: selectedAmenities,
+          features: selectedFeatures,
+          bookingFeePerPerson,
+          cancellationPolicy: {
+            allowCancellation: true,
+            isRefundable: false,
+            minimumNoticeHours: 0,
+          },
+          status: "pending",
+          totalBookings: 0,
+          averageRating: 0,
+          totalReviews: 0,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          searchKeywords,
+        };
+
+        const docRef = await addDoc(
+          collection(db, "restaurants"),
+          restaurantData,
+        );
+        await updateDoc(docRef, { id: docRef.id });
+        await updateDoc(doc(db, "users", user.uid), {
+          ownedRestaurants: arrayUnion(docRef.id),
+        });
+
+        Alert.alert(
+          "Submitted 🎉",
+          "Your restaurant is pending admin approval.",
+          [
+            {
+              text: "OK",
+              onPress: () => router.replace("/(owner)/my-restaurants"),
+            },
+          ],
+        );
+      }
     } catch (err: any) {
       Alert.alert(
         "Error",
@@ -261,7 +367,9 @@ export default function RegisterStep5() {
             <MaterialIcons name="arrow-back" size={22} color="#FFF" />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
-            <Text style={styles.headerTitle}>Add Restaurant</Text>
+            <Text style={styles.headerTitle}>
+              {isEdit ? "Edit Restaurant" : "Add Restaurant"}
+            </Text>
             <Text style={styles.headerSub}>
               Step 5 of 5 — Finishing Touches
             </Text>
@@ -491,8 +599,9 @@ export default function RegisterStep5() {
               <MaterialIcons name="info-outline" size={18} color="#6B2FA0" />
             </View>
             <Text style={styles.infoText}>
-              Your restaurant will be reviewed by our team. You'll be notified
-              once approved.
+              {isEdit
+                ? "Your changes will be sent to admin for review. The restaurant status will be set back to Pending until approved."
+                : "Your restaurant will be reviewed by our team. You'll be notified once approved."}
             </Text>
           </LinearGradient>
         </View>
@@ -520,7 +629,9 @@ export default function RegisterStep5() {
               style={styles.cta}
             >
               <MaterialIcons name="check-circle" size={20} color="#FFF" />
-              <Text style={styles.ctaText}>Submit for Approval</Text>
+              <Text style={styles.ctaText}>
+                {isEdit ? "Submit Changes" : "Submit for Approval"}
+              </Text>
             </LinearGradient>
           </TouchableOpacity>
         )}

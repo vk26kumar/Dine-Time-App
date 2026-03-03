@@ -24,15 +24,23 @@ export default function RegisterStep2() {
   const params = useLocalSearchParams();
   const insets = useSafeAreaInsets();
 
-  const [street, setStreet] = useState("");
-  const [city, setCity] = useState("");
-  const [state, setState] = useState("");
-  const [pincode, setPincode] = useState("");
-  const [landmark, setLandmark] = useState("");
+  const isEdit = params.isEdit === "true";
+
+  // ── Pre-fill from params ──
+  const [street, setStreet] = useState((params.street as string) ?? "");
+  const [city, setCity] = useState((params.city as string) ?? "");
+  const [state, setState] = useState((params.state as string) ?? "");
+  const [pincode, setPincode] = useState((params.pincode as string) ?? "");
+  const [landmark, setLandmark] = useState((params.landmark as string) ?? "");
   const [coordinates, setCoordinates] = useState<{
     latitude: number;
     longitude: number;
-  } | null>(null);
+  } | null>(() => {
+    const lat = parseFloat(params.latitude as string);
+    const lng = parseFloat(params.longitude as string);
+    if (!isNaN(lat) && !isNaN(lng)) return { latitude: lat, longitude: lng };
+    return null;
+  });
   const [fetching, setFetching] = useState(false);
 
   const handleGetLocation = async () => {
@@ -163,7 +171,9 @@ export default function RegisterStep2() {
             <MaterialIcons name="arrow-back" size={22} color="#FFF" />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
-            <Text style={styles.headerTitle}>Add Restaurant</Text>
+            <Text style={styles.headerTitle}>
+              {isEdit ? "Edit Restaurant" : "Add Restaurant"}
+            </Text>
             <Text style={styles.headerSub}>Step 2 of 5 — Location</Text>
           </View>
           <View style={{ width: 38 }} />
@@ -227,14 +237,12 @@ export default function RegisterStep2() {
           </LinearGradient>
         </TouchableOpacity>
 
-        {/* Divider */}
         <View style={styles.dividerRow}>
           <View style={styles.dividerLine} />
           <Text style={styles.dividerText}>or enter manually</Text>
           <View style={styles.dividerLine} />
         </View>
 
-        {/* Fields */}
         {fields.map((f) => (
           <View key={f.label} style={styles.card}>
             <View style={styles.fieldHeader}>
@@ -262,7 +270,6 @@ export default function RegisterStep2() {
           </View>
         ))}
 
-        {/* Coordinates card */}
         {coordinates && (
           <View style={styles.coordCard}>
             <LinearGradient
@@ -312,11 +319,7 @@ export default function RegisterStep2() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F0F2F7" },
-  header: {
-    paddingHorizontal: 16,
-    paddingBottom: 20,
-    overflow: "hidden",
-  },
+  header: { paddingHorizontal: 16, paddingBottom: 20, overflow: "hidden" },
   orb1: {
     position: "absolute",
     width: 140,
@@ -368,10 +371,8 @@ const styles = StyleSheet.create({
   },
   dotActive: { backgroundColor: "rgba(255,159,67,0.6)" },
   dotCurrent: { width: 20, backgroundColor: "#FF9F43" },
-
   scroll: { flex: 1 },
   scrollContent: { padding: 16, gap: 12 },
-
   gpsCard: {
     borderRadius: 16,
     overflow: "hidden",
@@ -400,11 +401,9 @@ const styles = StyleSheet.create({
   },
   gpsTitle: { fontSize: 14, fontWeight: "700", color: "#3D1A6E" },
   gpsSub: { fontSize: 12, color: "#8A95A3", marginTop: 2 },
-
   dividerRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   dividerLine: { flex: 1, height: 1, backgroundColor: "#E8ECF2" },
   dividerText: { fontSize: 11, color: "#B0B8C4", fontWeight: "600" },
-
   card: {
     backgroundColor: "#FFF",
     borderRadius: 16,
@@ -442,7 +441,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#0F1B2D",
   },
-
   coordCard: { borderRadius: 16, overflow: "hidden" },
   coordInner: {
     flexDirection: "row",
@@ -463,7 +461,6 @@ const styles = StyleSheet.create({
   },
   coordLabel: { fontSize: 12, fontWeight: "700", color: "#10B981" },
   coordValue: { fontSize: 12, color: "#065F46", marginTop: 2 },
-
   bottomBar: {
     padding: 16,
     backgroundColor: "#FFF",

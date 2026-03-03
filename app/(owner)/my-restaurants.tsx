@@ -106,6 +106,17 @@ export default function MyRestaurantsScreen() {
     ]);
   };
 
+  // ── Pass only 2 params — step1 fetches full data from Firestore ──
+  const handleEdit = (item: Restaurant) => {
+    router.push({
+      pathname: "/(owner)/register-restaurant/step1",
+      params: {
+        isEdit: "true",
+        restaurantId: item.id,
+      },
+    });
+  };
+
   const renderRestaurant = ({ item }: { item: Restaurant }) => {
     const status = item.status || "pending";
     const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.pending;
@@ -127,7 +138,6 @@ export default function MyRestaurantsScreen() {
             style={styles.image}
             resizeMode="cover"
           />
-          {/* dark gradient so name is readable */}
           <LinearGradient
             colors={["transparent", "rgba(10,5,20,0.82)"]}
             style={styles.imageGrad}
@@ -231,6 +241,18 @@ export default function MyRestaurantsScreen() {
             </Text>
           </View>
         ) : null}
+
+        {/* ── Edit button ── */}
+        <View style={styles.editRow}>
+          <TouchableOpacity
+            style={styles.editBtn}
+            onPress={() => handleEdit(item)}
+            activeOpacity={0.8}
+          >
+            <MaterialIcons name="edit" size={14} color="#6B2FA0" />
+            <Text style={styles.editBtnText}>Edit Details</Text>
+          </TouchableOpacity>
+        </View>
       </TouchableOpacity>
     );
   };
@@ -282,7 +304,6 @@ export default function MyRestaurantsScreen() {
         <View style={styles.headerOrb1} />
         <View style={styles.headerOrb2} />
 
-        {/* title row */}
         <View style={styles.headerRow}>
           <View>
             <Text style={styles.headerTitle}>My Restaurants</Text>
@@ -320,7 +341,6 @@ export default function MyRestaurantsScreen() {
           </View>
         </View>
 
-        {/* summary pills */}
         {restaurants.length > 0 && (
           <View style={styles.summaryRow}>
             <SummaryPill value={liveCount} label="Live" color="#10B981" />
@@ -413,7 +433,6 @@ const SummaryPill = ({
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F5F6F8" },
 
-  // Header
   header: {
     overflow: "hidden",
     shadowColor: "#6B2FA0",
@@ -512,7 +531,6 @@ const styles = StyleSheet.create({
 
   list: { padding: 16, gap: 14 },
 
-  // Card
   card: {
     backgroundColor: "#FFFFFF",
     borderRadius: 20,
@@ -526,7 +544,6 @@ const styles = StyleSheet.create({
     borderColor: "#EEF0F4",
   },
 
-  // Image
   imageWrap: { width: "100%", height: 165, position: "relative" },
   image: { width: "100%", height: "100%", backgroundColor: "#F5F6F8" },
   imageGrad: {
@@ -586,7 +603,6 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
 
-  // Stats strip
   statsStrip: {
     flexDirection: "row",
     alignItems: "center",
@@ -611,7 +627,6 @@ const styles = StyleSheet.create({
   },
   cellDivider: { width: 1, height: 32, backgroundColor: "#EEF0F4" },
 
-  // Tags
   tagsRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -630,7 +645,6 @@ const styles = StyleSheet.create({
   tagMore: { backgroundColor: "#F5F6F8", borderColor: "#EEF0F4" },
   tagText: { fontSize: 11, fontWeight: "600", color: "#FF5A5F" },
 
-  // Rejection
   rejectionBox: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -645,7 +659,29 @@ const styles = StyleSheet.create({
   },
   rejectionText: { flex: 1, fontSize: 12, color: "#EF4444", lineHeight: 17 },
 
-  // Empty
+  // ── Edit button row ──
+  editRow: {
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+    paddingTop: 4,
+  },
+  editBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 9,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "rgba(107,47,160,0.25)",
+    backgroundColor: "rgba(107,47,160,0.05)",
+  },
+  editBtnText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#6B2FA0",
+  },
+
   emptyWrap: {
     flex: 1,
     alignItems: "center",
