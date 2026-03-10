@@ -677,18 +677,15 @@ export default function ExploreHeader({
               onPress={() => router.push("/(consumer)/profile" as any)}
               activeOpacity={0.85}
             >
-              <LinearGradient
-                colors={["#FF5A5F", "#FF8C42"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.logoGrad}
-              >
-                <MaterialIcons name="restaurant" size={14} color="#FFF" />
-              </LinearGradient>
+              <Image
+                source={require("../../assets/DTime.png")}
+                style={{ width: 32, height: 32, borderRadius: 8 }}
+                resizeMode="contain"
+              />
               <View style={styles.logoTextRow}>
-                <Text style={styles.logoWordDine}>dine</Text>
+                <Text style={styles.logoWordDine}>Dine</Text>
                 <Text style={[styles.logoWordTime, { color: theme.accent }]}>
-                  time
+                  Time
                 </Text>
               </View>
             </TouchableOpacity>

@@ -9,6 +9,7 @@ import {
   Animated,
   Dimensions,
   Platform,
+  Image,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
@@ -374,18 +375,12 @@ export default function SignupScreen() {
               { opacity: logoOpacity, transform: [{ scale: logoScale }] },
             ]}
           >
-            <LinearGradient
-              colors={["#FF5A5F", "#FF9F43"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.logoMark}
-            >
-              <MaterialIcons name="restaurant" size={26} color="#FFF" />
-            </LinearGradient>
-            <Text style={styles.brandName}>
-              <Text style={{ color: "#FFFFFF" }}>dine</Text>
-              <Text style={{ color: "#FF9F43" }}>time</Text>
-            </Text>
+            {/* ── DineTime Logo Image ── */}
+            <Image
+              source={require("../../assets/DTime.png")}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
             <Text style={styles.brandCaption}>
               Join thousands of food lovers ✦
             </Text>
@@ -752,29 +747,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  // Brand — centered column
+  // Brand
   brandWrap: {
     alignItems: "center",
     gap: 10,
     paddingBottom: 36,
   },
-  logoMark: {
-    width: 60,
-    height: 60,
+  logoImage: {
+    width: 90,
+    height: 90,
     borderRadius: 20,
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#FF5A5F",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.5,
-    shadowRadius: 18,
-    elevation: 10,
-    marginBottom: 4,
-  },
-  brandName: {
-    fontSize: 30,
-    fontWeight: "900",
-    letterSpacing: -0.8,
   },
   brandCaption: {
     fontSize: 11,

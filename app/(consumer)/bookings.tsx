@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Dimensions,
+  Image,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { collection, query, where, orderBy, getDocs } from "firebase/firestore";
@@ -392,14 +393,11 @@ export default function BookingsScreen() {
         {/* Top row: brand + count */}
         <View style={styles.headerTopRow}>
           <View style={styles.headerBrand}>
-            <LinearGradient
-              colors={["#FF5A5F", "#FF9F43"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.headerLogoMark}
-            >
-              <MaterialIcons name="restaurant" size={14} color="#FFF" />
-            </LinearGradient>
+            <Image
+              source={require("../../assets/DTime.png")}
+              style={{ width: 38, height: 38, borderRadius: 12 }}
+              resizeMode="contain"
+            />
             <View>
               <Text style={styles.headerTitle}>My Bookings</Text>
               <Text style={styles.headerCaption}>

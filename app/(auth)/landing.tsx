@@ -8,6 +8,7 @@ import {
   StatusBar,
   Animated,
   Dimensions,
+  Image,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
@@ -61,9 +62,7 @@ export default function LandingScreen() {
       />
 
       <ImageBackground
-        source={{
-          uri: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800",
-        }}
+        source={require("../../assets/Rest.jpg")}
         style={styles.bg}
         resizeMode="cover"
       >
@@ -89,18 +88,12 @@ export default function LandingScreen() {
             },
           ]}
         >
-          {/* ── Logo pill ── */}
-          <View style={styles.logoPill}>
-            <LinearGradient
-              colors={["#FF5A5F", "#FF9F43"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.logoPillGrad}
-            >
-              <MaterialIcons name="restaurant" size={18} color="#FFFFFF" />
-              <Text style={styles.logoPillText}>DINE TIME</Text>
-            </LinearGradient>
-          </View>
+          {/* ── Logo Image ── */}
+          <Image
+            source={require("../../assets/DTime.png")}
+            style={styles.logoImage}
+            resizeMode="contain"
+          />
 
           {/* ── Title ── */}
           <Text style={styles.title}>Find Your{"\n"}Perfect Table</Text>
@@ -114,7 +107,10 @@ export default function LandingScreen() {
             {FEATURES.map((f, i) => (
               <View key={i} style={styles.featureCard}>
                 <LinearGradient
-                  colors={["rgba(207, 84, 75, 0.58)", "rgba(255, 158, 67, 0.2)"]}
+                  colors={[
+                    "rgba(207, 84, 75, 0.58)",
+                    "rgba(255, 158, 67, 0.2)",
+                  ]}
                   style={styles.featureIconWrap}
                 >
                   <MaterialIcons
@@ -148,7 +144,6 @@ export default function LandingScreen() {
                 <MaterialIcons name="arrow-forward" size={18} color="#FFFFFF" />
               </LinearGradient>
             </TouchableOpacity>
-
           </View>
 
           {/* ── Footer ── */}
@@ -173,24 +168,13 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
 
-  logoPill: {
-    alignSelf: "flex-start",
-    borderRadius: 20,
-    overflow: "hidden",
+  // ── Logo ──
+  logoImage: {
+    width: 110,
+    height: 110,
+    borderRadius: 22,
     marginBottom: 22,
-  },
-  logoPillGrad: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  logoPillText: {
-    fontSize: 13,
-    fontWeight: "900",
-    color: "#FFFFFF",
-    letterSpacing: 1.5,
+    alignSelf: "flex-start",
   },
 
   title: {
@@ -250,20 +234,6 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#FFFFFF",
     letterSpacing: 0.2,
-  },
-
-  secondaryBtn: {
-    alignItems: "center",
-    paddingVertical: 14,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    borderColor: "rgba(255,255,255,0.2)",
-    backgroundColor: "rgba(255,255,255,0.06)",
-  },
-  secondaryBtnText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "rgba(255,255,255,0.8)",
   },
 
   footer: {

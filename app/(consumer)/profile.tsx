@@ -11,7 +11,6 @@ import {
   TextInput,
   Animated,
   ActivityIndicator,
-  Switch,
   Modal,
   Dimensions,
   Linking,
@@ -24,11 +23,10 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
+import { DeleteAccountModal } from "../../components/common/DeleteAccountModal";
 
-// ── Cloudinary config ────────────────────────────────────────────────────────
 const CLOUD_NAME = "dzbazi9fw";
 const UPLOAD_PRESET = "Restaurants_Image";
-
 const { width: SW } = Dimensions.get("window");
 
 const C = {
@@ -67,7 +65,6 @@ const uploadToCloudinary = async (uri: string): Promise<string | null> => {
   }
 };
 
-// ── Shared sheet animation hook ───────────────────────────────────────────────
 function useSheetAnim(visible: boolean, initialY = 350) {
   const slideAnim = useRef(new Animated.Value(initialY)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -104,7 +101,6 @@ function useSheetAnim(visible: boolean, initialY = 350) {
   return { slideAnim, fadeAnim };
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
 const SectionCard = ({
   title,
   children,
@@ -159,7 +155,6 @@ const OptionRow = ({
   </TouchableOpacity>
 );
 
-// ── Confirm Modal (themed, replaces Alert) ────────────────────────────────────
 const ConfirmModal = ({
   visible,
   onClose,
@@ -239,7 +234,6 @@ const ConfirmModal = ({
   );
 };
 
-// ── Edit Profile Modal ────────────────────────────────────────────────────────
 const EditProfileModal = ({
   visible,
   onClose,
@@ -329,12 +323,10 @@ const EditProfileModal = ({
                 <MaterialIcons name="close" size={18} color={C.textSub} />
               </TouchableOpacity>
             </View>
-
             <ScrollView
               showsVerticalScrollIndicator={false}
               style={{ paddingHorizontal: 20 }}
             >
-              {/* Avatar picker */}
               <View style={{ alignItems: "center", marginBottom: 24 }}>
                 <TouchableOpacity
                   onPress={handlePickImage}
@@ -368,8 +360,6 @@ const EditProfileModal = ({
                 </TouchableOpacity>
                 <Text style={styles.changePhotoText}>Tap to change photo</Text>
               </View>
-
-              {/* Fields */}
               {[
                 {
                   label: "Full Name",
@@ -417,7 +407,6 @@ const EditProfileModal = ({
                   </View>
                 </View>
               ))}
-
               <TouchableOpacity
                 onPress={handleSave}
                 activeOpacity={0.88}
@@ -447,7 +436,6 @@ const EditProfileModal = ({
   );
 };
 
-// ── Offers Modal ──────────────────────────────────────────────────────────────
 const OffersModal = ({
   visible,
   onClose,
@@ -485,7 +473,6 @@ const OffersModal = ({
               <MaterialIcons name="close" size={18} color={C.textSub} />
             </TouchableOpacity>
           </View>
-
           <View style={styles.offersEmptyWrap}>
             <LinearGradient
               colors={["#fff7f0", "#fde8c8"]}
@@ -539,7 +526,6 @@ const OffersModal = ({
   );
 };
 
-// ── Help Modal ────────────────────────────────────────────────────────────────
 const HelpModal = ({
   visible,
   onClose,
@@ -548,50 +534,40 @@ const HelpModal = ({
   onClose: () => void;
 }) => {
   const { slideAnim, fadeAnim } = useSheetAnim(visible, 400);
-
   const faqs = [
     {
       q: "What is Dine Time?",
-      a: "Dine Time is a comprehensive restaurant reservation app that lists various restaurants across the country. Search for your favourite or nearby establishments and book a table instantly.",
+      a: "Dine Time is a comprehensive restaurant reservation app. Search for your favourite or nearby establishments and book a table instantly.",
     },
     {
       q: "How do I find restaurants?",
-      a: "Use the Explore tab to search by name, cuisine, or location. You can discover new restaurants near you or look up specific ones.",
+      a: "Use the Explore tab to search by name, cuisine, or location.",
     },
     {
       q: "How do I book a table?",
-      a: "Find your desired restaurant, tap 'Book a Table', choose your date, time, and guest count, then complete payment — all within the app.",
+      a: "Find your desired restaurant, tap 'Book a Table', choose your date, time, and guest count, then complete payment.",
     },
     {
       q: "What payment methods are available?",
       a: "Dine Time supports the restaurant's original payment options. All payment processing is handled securely within the app.",
     },
     {
-      q: "Where do my payments go?",
-      a: "All payments for reservations are transferred directly into the respective restaurant's account.",
-    },
-    {
       q: "What is the refund policy?",
-      a: "All reservation payments through Dine Time are non-refundable. Please confirm all booking details carefully before completing the transaction.",
+      a: "All reservation payments through Dine Time are non-refundable. Please confirm all booking details carefully before completing.",
     },
     {
       q: "How do I list my restaurant?",
-      a: "Switch to Owner mode from your profile page, then follow the restaurant registration steps to submit your listing for review.",
-    },
-    {
-      q: "How long does approval take?",
-      a: "Our admin team verifies all submitted details. Processing time varies based on submission completeness and application volume — we work as quickly as possible.",
+      a: "Switch to Owner mode from your profile page, then follow the restaurant registration steps.",
     },
     {
       q: "How do I change my profile picture?",
-      a: "Tap 'Edit Profile' on your profile page, then tap your avatar to upload a new photo from your gallery.",
+      a: "Tap 'Edit Profile' on your profile page, then tap your avatar to upload a new photo.",
     },
     {
       q: "Need more help?",
-      a: "Contact our support team at dinetimeteam@gmail.com. We are available Mon–Sat, 9 AM – 6 PM and are happy to assist.",
+      a: "Contact our support team at dinetimeteam@gmail.com. Mon–Sat, 9 AM – 6 PM.",
     },
   ];
-
   return (
     <Modal
       visible={visible}
@@ -618,9 +594,7 @@ const HelpModal = ({
               <MaterialIcons name="close" size={18} color={C.textSub} />
             </TouchableOpacity>
           </View>
-
           <ScrollView showsVerticalScrollIndicator={false}>
-            {/* Contact card */}
             <TouchableOpacity
               style={styles.contactCard}
               onPress={() => Linking.openURL("mailto:dinetimeteam@gmail.com")}
@@ -655,8 +629,6 @@ const HelpModal = ({
                 />
               </LinearGradient>
             </TouchableOpacity>
-
-            {/* FAQs */}
             <Text style={styles.faqHeading}>Frequently Asked Questions</Text>
             {faqs.map((item, i) => (
               <View key={i} style={styles.faqItem}>
@@ -675,7 +647,6 @@ const HelpModal = ({
   );
 };
 
-// ── About Modal ───────────────────────────────────────────────────────────────
 const AboutModal = ({
   visible,
   onClose,
@@ -713,24 +684,19 @@ const AboutModal = ({
               <MaterialIcons name="close" size={18} color={C.textSub} />
             </TouchableOpacity>
           </View>
-
           <ScrollView showsVerticalScrollIndicator={false}>
-            {/* Identity */}
             <View style={styles.aboutIdentity}>
-              <LinearGradient
-                colors={["#ff7f2a", "#f49b33"]}
-                style={styles.aboutLogo}
-              >
-                <MaterialIcons name="restaurant" size={32} color={C.white} />
-              </LinearGradient>
+              <Image
+                source={require("../../assets/DTime.png")}
+                style={{ width: 72, height: 72, borderRadius: 22 }}
+                resizeMode="contain"
+              />
               <Text style={styles.aboutAppName}>Dine Time</Text>
               <Text style={styles.aboutTagline}>
                 Discover restaurants, reserve tables instantly,{"\n"}and enjoy
                 seamless dining — all in one app.
               </Text>
             </View>
-
-            {/* Feature grid */}
             <View style={styles.aboutSection}>
               <Text style={styles.aboutSectionTitle}>
                 What makes us special
@@ -753,8 +719,6 @@ const AboutModal = ({
                 ))}
               </View>
             </View>
-
-            {/* Why users love */}
             <View style={styles.aboutSection}>
               <Text style={styles.aboutSectionTitle}>
                 Why users love Dine Time
@@ -771,8 +735,6 @@ const AboutModal = ({
                 </View>
               ))}
             </View>
-
-            {/* Contact */}
             <TouchableOpacity
               style={styles.aboutContactCard}
               onPress={() => Linking.openURL("mailto:dinetimeteam@gmail.com")}
@@ -792,8 +754,6 @@ const AboutModal = ({
                 color={C.accentSoft}
               />
             </TouchableOpacity>
-
-            {/* Legal */}
             <View style={styles.aboutSection}>
               {["Terms of Service", "Privacy Policy", "Licenses"].map(
                 (label, i) => (
@@ -812,15 +772,12 @@ const AboutModal = ({
                 ),
               )}
             </View>
-
-            {/* Footer */}
             <View style={styles.aboutFooterWrap}>
               <Text style={styles.aboutFooter}>Made with ❤️ in India</Text>
               <Text style={styles.aboutCopy}>
                 © 2025 Dine Time. All rights reserved.
               </Text>
             </View>
-
             <View style={{ height: 36 }} />
           </ScrollView>
         </Animated.View>
@@ -841,6 +798,7 @@ export default function ProfileScreen() {
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showSwitchConfirm, setShowSwitchConfirm] = useState(false);
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(20)).current;
@@ -877,6 +835,12 @@ export default function ProfileScreen() {
     );
   };
 
+  const handleDeleteComplete = async () => {
+    setShowDeleteAccount(false);
+    await logout();
+    router.replace("/(auth)/landing");
+  };
+
   const initials = userData?.fullName?.charAt(0).toUpperCase() || "U";
   const isOwner = userData?.rolePreference === "owner";
   const switchLabel = isOwner ? "Switch to Diner" : "List Your Restaurant";
@@ -885,7 +849,6 @@ export default function ProfileScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff2e1" />
 
-      {/* ── Modals ── */}
       <OffersModal visible={showOffers} onClose={() => setShowOffers(false)} />
       <HelpModal visible={showHelp} onClose={() => setShowHelp(false)} />
       <AboutModal visible={showAbout} onClose={() => setShowAbout(false)} />
@@ -894,6 +857,12 @@ export default function ProfileScreen() {
         onClose={() => setShowEditProfile(false)}
         userData={userData}
         updateUserProfile={updateUserProfile}
+      />
+      <DeleteAccountModal
+        visible={showDeleteAccount}
+        onClose={() => setShowDeleteAccount(false)}
+        onDeleteComplete={handleDeleteComplete}
+        isOwner={isOwner}
       />
       <ConfirmModal
         visible={showLogoutConfirm}
@@ -922,7 +891,7 @@ export default function ProfileScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: insets.bottom + 90 }}
       >
-        {/* ── Header ── */}
+        {/* ── Header with Dine Time Logo ── */}
         <LinearGradient
           colors={["#fff2e1", "#fde8c8", "#fff2e1"]}
           start={{ x: 0, y: 0 }}
@@ -930,7 +899,18 @@ export default function ProfileScreen() {
           style={[styles.header, { paddingTop: insets.top + 12 }]}
         >
           <View style={styles.headerTopRow}>
-            <Text style={styles.headerTitle}>My Profile</Text>
+            {/* Dine Time Logo */}
+            <View style={styles.logoRow}>
+              <Image
+                source={require("../../assets/DTime.png")}
+                style={{ width: 36, height: 36, borderRadius: 10 }}
+                resizeMode="contain"
+              />
+              <Text style={styles.logoText}>
+                <Text>Dine </Text>
+                <Text style={{ color: C.accent }}>Time</Text>
+              </Text>
+            </View>
             <TouchableOpacity
               style={styles.helpBtn}
               activeOpacity={0.8}
@@ -941,7 +921,6 @@ export default function ProfileScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Avatar + name */}
           <Animated.View
             style={[
               styles.avatarSection,
@@ -963,9 +942,7 @@ export default function ProfileScreen() {
                 </LinearGradient>
               )}
             </View>
-
             <Text style={styles.userName}>{userData?.fullName || "Guest"}</Text>
-
             <View style={styles.roleBadge}>
               <MaterialIcons
                 name={isOwner ? "store" : "person"}
@@ -1062,6 +1039,17 @@ export default function ProfileScreen() {
           />
         </SectionCard>
 
+        {/* ── Privacy & Security ── */}
+        <SectionCard title="Privacy & Security">
+          <OptionRow
+            icon="delete-forever"
+            label="Delete Account"
+            subtitle="Permanently remove your account & all data"
+            onPress={() => setShowDeleteAccount(true)}
+            danger
+          />
+        </SectionCard>
+
         {/* ── Switch Role Banner ── */}
         <TouchableOpacity
           style={styles.roleBannerCard}
@@ -1127,10 +1115,8 @@ export default function ProfileScreen() {
   );
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.bg },
-
   header: {
     paddingHorizontal: 20,
     paddingBottom: 24,
@@ -1144,7 +1130,34 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 20,
   },
-  headerTitle: { fontSize: 20, fontWeight: "800", color: C.text },
+
+  // Dine Time Logo
+  logoRow: { flexDirection: "row", alignItems: "center", gap: 9 },
+  logoIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: C.accent,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  logoText: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: C.text,
+    letterSpacing: -0.3,
+  },
+  logoSubText: {
+    fontSize: 11,
+    color: C.textMuted,
+    fontWeight: "500",
+    marginTop: 1,
+  },
+
   helpBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -1274,7 +1287,6 @@ const styles = StyleSheet.create({
   },
   noOfferText: { fontSize: 11, fontWeight: "700", color: C.accentSoft },
 
-  // Role banner
   roleBannerCard: {
     marginHorizontal: 14,
     marginTop: 12,
@@ -1305,7 +1317,6 @@ const styles = StyleSheet.create({
   roleBannerTitle: { fontSize: 14, fontWeight: "700", marginBottom: 3 },
   roleBannerSub: { fontSize: 12, color: C.textSub },
 
-  // Logout
   logoutBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -1320,7 +1331,6 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,75,75,0.15)",
   },
   logoutText: { fontSize: 14, fontWeight: "700", color: C.error },
-
   footer: {
     fontSize: 11,
     color: C.textMuted,
@@ -1328,7 +1338,6 @@ const styles = StyleSheet.create({
     marginTop: 18,
   },
 
-  // ── Modal shared ──
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.45)",
@@ -1361,7 +1370,6 @@ const styles = StyleSheet.create({
   offersTitle: { fontSize: 18, fontWeight: "800", color: C.text },
   offersSub: { fontSize: 12, color: C.textMuted, marginTop: 2 },
 
-  // ── Confirm sheet ──
   confirmSheet: {
     backgroundColor: C.white,
     borderTopLeftRadius: 24,
@@ -1415,7 +1423,6 @@ const styles = StyleSheet.create({
   confirmActionDanger: { backgroundColor: C.error },
   confirmActionText: { fontSize: 14, fontWeight: "700", color: C.white },
 
-  // ── Edit Profile sheet ──
   editSheet: {
     backgroundColor: C.white,
     borderTopLeftRadius: 24,
@@ -1475,7 +1482,6 @@ const styles = StyleSheet.create({
   },
   saveBtnText: { fontSize: 15, fontWeight: "700", color: C.white },
 
-  // ── Offers sheet ──
   offersSheet: {
     backgroundColor: C.white,
     borderTopLeftRadius: 24,
@@ -1543,7 +1549,6 @@ const styles = StyleSheet.create({
   },
   soonBadgeText: { fontSize: 9, fontWeight: "700", color: C.accent },
 
-  // ── Help sheet ──
   helpSheet: {
     backgroundColor: C.white,
     borderTopLeftRadius: 24,
@@ -1572,11 +1577,6 @@ const styles = StyleSheet.create({
     backgroundColor: C.white,
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: C.accent,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 2,
   },
   contactTitle: {
     fontSize: 14,
@@ -1626,7 +1626,6 @@ const styles = StyleSheet.create({
   },
   faqAText: { fontSize: 12, color: C.textSub, lineHeight: 18, paddingLeft: 14 },
 
-  // ── About sheet ──
   aboutSheet: {
     backgroundColor: C.white,
     borderTopLeftRadius: 24,
@@ -1648,11 +1647,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 10,
-    shadowColor: C.accent,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 6,
   },
   aboutAppName: {
     fontSize: 22,

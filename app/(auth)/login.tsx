@@ -10,6 +10,7 @@ import {
   Animated,
   Dimensions,
   Platform,
+  Image,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -337,19 +338,13 @@ export default function LoginScreen() {
               { opacity: logoOpacity, transform: [{ scale: logoScale }] },
             ]}
           >
-            <LinearGradient
-              colors={["#FF5A5F", "#FF9F43"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.logoMark}
-            >
-              <MaterialIcons name="restaurant" size={26} color="#FFF" />
-            </LinearGradient>
+            {/* ── DineTime Logo Image ── */}
+            <Image
+              source={require("../../assets/DTime.png")}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
 
-            <Text style={styles.brandName}>
-              <Text style={{ color: "#FFFFFF" }}>Dine</Text>
-              <Text style={{ color: "#FF9F43" }}>Time</Text>
-            </Text>
             <Text style={styles.brandCaption}>Your table is waiting ✦</Text>
           </Animated.View>
 
@@ -570,7 +565,7 @@ const styles = StyleSheet.create({
   toastTitle: { fontSize: 13, fontWeight: "800", marginBottom: 2 },
   toastMsg: { fontSize: 11, color: "#6B7280", lineHeight: 15 },
 
-  // Hero — taller, centered layout
+  // Hero
   hero: {
     height: SH * 0.32,
     minHeight: 200,
@@ -616,29 +611,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  // Brand — centered column
+  // Brand
   brandWrap: {
     alignItems: "center",
     gap: 10,
     paddingBottom: 36,
   },
-  logoMark: {
-    width: 60,
-    height: 60,
+  logoImage: {
+    width: 90,
+    height: 90,
     borderRadius: 20,
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#FF5A5F",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.5,
-    shadowRadius: 18,
-    elevation: 10,
-    marginBottom: 4,
-  },
-  brandName: {
-    fontSize: 30,
-    fontWeight: "900",
-    letterSpacing: -0.8,
   },
   brandCaption: {
     fontSize: 11,
