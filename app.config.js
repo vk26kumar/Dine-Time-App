@@ -41,12 +41,13 @@ export default {
 
     android: {
       package: "com.project.dinetime",
+      versionCode: 1,
       adaptiveIcon: {
         foregroundImage: "./assets/adaptive-icon.png",
-        backgroundColor: "#ffffff",
+        backgroundColor: "#ffffff"
       },
       googleServicesFile: "./google-services.json",
-      permissions: ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"],
+      permissions: ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"]
     },
 
     ios: {
