@@ -41,12 +41,13 @@ export default {
 
     android: {
       package: "com.project.dinetime",
+      versionCode: 1,
       adaptiveIcon: {
         foregroundImage: "./assets/adaptive-icon.png",
-        backgroundColor: "#ffffff",
+        backgroundColor: "#ffffff"
       },
       googleServicesFile: "./google-services.json",
-      permissions: ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"],
+      permissions: ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"]
     },
 
     ios: {
@@ -65,7 +66,7 @@ export default {
 
     extra: {
       eas: {
-        projectId: "aae3e973-de12-41be-bc1b-6386d4943600",
+        projectId: "e1f5487d-663d-44fd-8dc2-3037bc1e4f1b"
       },
     },
   },
