@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Delete Account – Dine Time</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f8f9fb;
+      color: #222222;
+      line-height: 1.7;
+    }
+
+    /* ── Header ── */
+    header {
+      background: linear-gradient(135deg, #fff2e1, #fde8c8);
+      padding: 40px 24px 32px;
+      text-align: center;
+      border-bottom: 1px solid #ffd7b0;
+    }
+    .logo { font-size: 28px; font-weight: 900; letter-spacing: -0.5px; }
+    .logo span { color: #ff7f2a; }
+    header p { font-size: 13px; color: #666; margin-top: 6px; }
+    .badge {
+      display: inline-block;
+      margin-top: 12px;
+      background: #fff0f0;
+      border: 1px solid #ffcccc;
+      color: #ff4b4b;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 4px 16px;
+      border-radius: 20px;
+      letter-spacing: 0.3px;
+    }
+
+    /* ── Layout ── */
+    .container {
+      max-width: 680px;
+      margin: 36px auto;
+      padding: 0 20px 60px;
+    }
+
+    /* ── Cards ── */
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      border: 1px solid #f2f2f2;
+      padding: 24px 24px 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    .card-label {
+      font-size: 10px;
+      font-weight: 800;
+      color: #999;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }
+    h2 {
+      font-size: 16px;
+      font-weight: 800;
+      color: #222;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    h2 .icon {
+      width: 36px; height: 36px;
+      border-radius: 11px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+    .icon-red { background: #fff0f0; border: 1px solid #ffcccc; }
+    .icon-orange { background: #fff7f0; border: 1px solid #ffd7b0; }
+    .icon-green { background: #f0fff4; border: 1px solid #bbf7d0; }
+    p { font-size: 14px; color: #555; margin-bottom: 10px; }
+
+    /* ── Steps ── */
+    .step {
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+      margin-bottom: 14px;
+    }
+    .step-num {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      background: #fff7f0;
+      border: 1px solid #ffd7b0;
+      color: #ff7f2a;
+      font-weight: 800;
+      font-size: 14px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .step-text { font-size: 14px; color: #444; padding-top: 5px; line-height: 1.5; }
+    .step-text strong { color: #222; }
+
+    /* ── List rows ── */
+    .list-box {
+      border-radius: 13px;
+      padding: 14px 16px;
+      border-width: 1px;
+      margin-bottom: 12px;
+    }
+    .list-box.red { background: #fff0f0; border: 1px solid rgba(255,75,75,0.18); }
+    .list-box.orange { background: #fff7f0; border: 1px solid #ffd7b0; }
+    .list-box.green { background: #f0fff4; border: 1px solid #bbf7d0; }
+
+    .list-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .list-row:last-child { margin-bottom: 0; }
+    .list-dot {
+      width: 24px; height: 24px;
+      border-radius: 7px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .dot-red { background: #fff0f0; }
+    .dot-orange { background: #fff7f0; }
+    .dot-green { background: #f0fff4; }
+    .list-text { font-size: 13px; color: #333; line-height: 1.55; font-weight: 500; flex: 1; }
+    .list-text.muted { color: #666; font-weight: 400; }
+
+    /* ── Sub section label ── */
+    .sub-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 800;
+      color: #f49b33;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 10px;
+    }
+
+    /* ── Warning box ── */
+    .warning {
+      background: #fff0f0;
+      border: 1px solid #ffcccc;
+      border-radius: 12px;
+      padding: 14px 16px;
+      font-size: 13px;
+      color: #cc0000;
+      margin-top: 4px;
+      line-height: 1.6;
+    }
+
+    /* ── Contact card ── */
+    .contact-card {
+      background: linear-gradient(135deg, #fff7f0, #fde8c8);
+      border: 1px solid #ffd7b0;
+      border-radius: 14px;
+      padding: 18px 20px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-top: 10px;
+    }
+    .contact-icon {
+      width: 48px; height: 48px;
+      background: #fff;
+      border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px;
+      flex-shrink: 0;
+    }
+    .contact-card a { color: #ff7f2a; font-weight: 700; text-decoration: none; }
+    .contact-card a:hover { text-decoration: underline; }
+    .contact-card small { font-size: 12px; color: #999; display: block; margin-top: 3px; }
+
+    /* ── GDPR note ── */
+    .gdpr-note {
+      text-align: center;
+      font-size: 12px;
+      color: #999;
+      margin-top: 6px;
+      padding: 0 10px;
+      line-height: 1.6;
+    }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      font-size: 12px;
+      color: #bbb;
+      padding-bottom: 30px;
+    }
+    footer strong { color: #ff7f2a; }
+
+    @media (max-width: 480px) {
+      .container { padding: 0 14px 50px; }
+      .card { padding: 18px 16px; }
+      .contact-card { flex-direction: column; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header>
+  <div class="logo">Dine <span>Time</span></div>
+  <p>Restaurant Discovery &amp; Table Booking App</p>
+  <div class="badge">⚠️ Account Deletion</div>
+</header>
+
+<div class="container">
+
+  <!-- ── Intro ── -->
+  <div class="card">
+    <div class="card-label">Overview</div>
+    <h2><span class="icon icon-red">🗑️</span> Delete Your Account</h2>
+    <p>You can permanently delete your Dine Time account directly from within the app. This action is <strong>irreversible</strong> — once deleted, your account and personal data cannot be recovered.</p>
+    <div class="warning">
+      ⚠️ <strong>Warning:</strong> Deleting your account is permanent and cannot be undone. Your login access will be revoked immediately. If you are a restaurant owner, your restaurant listing will also be removed.
+    </div>
+  </div>
+
+  <!-- ── In-App Steps ── -->
+  <div class="card">
+    <div class="card-label">In-App Method (Recommended)</div>
+    <h2><span class="icon icon-orange">📱</span> Delete From the App</h2>
+    <p>Follow these steps inside the Dine Time app:</p>
+
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-text">Open the <strong>Dine Time</strong> app on your Android device</div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-text">Tap the <strong>Profile</strong> tab at the bottom of the screen</div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-text">Scroll down to the <strong>Privacy &amp; Security</strong> section</div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-text">Tap <strong>Delete Account</strong> — a confirmation sheet will appear</div>
+    </div>
+    <div class="step">
+      <div class="step-num">5</div>
+      <div class="step-text">Review what will be deleted, then tap <strong>Continue</strong></div>
+    </div>
+    <div class="step">
+      <div class="step-num">6</div>
+      <div class="step-text">Enter your <strong>account password</strong> to confirm your identity and tap <strong>Delete Forever</strong></div>
+    </div>
+    <div class="step">
+      <div class="step-num">7</div>
+      <div class="step-text">Your account will be <strong>permanently deleted</strong> and you will be signed out immediately</div>
+    </div>
+  </div>
+
+  <!-- ── What Gets Deleted ── -->
+  <div class="card">
+    <div class="card-label">Data Deletion</div>
+    <h2><span class="icon icon-red">📦</span> What Gets Deleted</h2>
+
+    <div class="list-box red">
+      <div class="list-row">
+        <div class="list-dot dot-red">👤</div>
+        <div class="list-text">Your profile — name, email address, phone number, profile photo</div>
+      </div>
+      <div class="list-row">
+        <div class="list-dot dot-red">📍</div>
+        <div class="list-text">Your saved addresses and location preferences</div>
+      </div>
+      <div class="list-row">
+        <div class="list-dot dot-red">❤️</div>
+        <div class="list-text">Your saved favourite restaurants</div>
+      </div>
+      <div class="list-row">
+        <div class="list-dot dot-red">🔐</div>
+        <div class="list-text">Your Firebase authentication account — login access revoked immediately</div>
+      </div>
+      <div class="list-row">
+        <div class="list-dot dot-red">🏪</div>
+        <div class="list-text">If you are a restaurant owner — your restaurant listing and all associated data</div>
+      </div>
+    </div>
+
+    <!-- What's Kept -->
+    <div class="sub-label">
+      <span>ℹ️</span> Kept for Legal Compliance
+    </div>
+    <div class="list-box orange">
+      <div class="list-row">
+        <div class="list-dot dot-orange">💳</div>
+        <div class="list-text muted">Payment transaction records — <strong>anonymized only</strong>, no personal identity attached. Kept to comply with financial and tax regulations.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Deletion Process ── -->
+  <div class="card">
+    <div class="card-label">Behind the Scenes</div>
+    <h2><span class="icon icon-orange">⚙️</span> What Happens When You Delete</h2>
+    <p>When you confirm deletion, here is what the app does automatically:</p>
+    <div class="list-box orange">
+      <div class="list-row">
+        <div class="list-dot dot-orange">1️⃣</div>
+        <div class="list-text">Removes profile data from our database</div>
+      </div>
+      <div class="list-row">
+        <div class="list-dot dot-orange">2️⃣</div>
+        <div class="list-text">Removes your restaurant listing (if you are an owner)</div>
+      </div>
+      <div class="list-row">
+        <div class="list-dot dot-orange">3️⃣</div>
+        <div class="list-text">Anonymizes any payment records — replacing your name and contact with "Deleted User"</div>
+      </div>
+      <div class="list-row">
+        <div class="list-dot dot-orange">4️⃣</div>
+        <div class="list-text">Permanently closes and removes your login account from Firebase Authentication</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Email Deletion Request ── -->
+  <div class="card">
+    <div class="card-label">Alternative Method</div>
+    <h2><span class="icon icon-orange">📬</span> Request Deletion by Email</h2>
+    <p>If you cannot access the app, you can request account deletion by contacting our support team:</p>
+    <div class="contact-card">
+      <div class="contact-icon">🎧</div>
+      <div>
+        <strong>Dine Time Support Team</strong>
+        <a href="mailto:dinetimeteam@gmail.com" style="display:block;margin-top:4px;">dinetimeteam@gmail.com</a>
+        <small>Mon–Sat, 9 AM – 6 PM IST &nbsp;·&nbsp; We process deletion requests within 7 business days</small>
+      </div>
+    </div>
+    <p style="margin-top:12px;font-size:13px;color:#777;">Please include your <strong>registered email address</strong> in your request so we can identify and delete the correct account.</p>
+  </div>
+
+  <!-- ── Compliance ── -->
+  <div class="card">
+    <div class="card-label">Compliance</div>
+    <h2><span class="icon icon-green">✅</span> Data Protection Compliance</h2>
+    <div class="list-box green">
+      <div class="list-row">
+        <div class="list-dot dot-green">🇮🇳</div>
+        <div class="list-text muted">Compliant with the <strong>Digital Personal Data Protection (DPDP) Act, 2023</strong> — your personal data is fully erased upon deletion</div>
+      </div>
+      <div class="list-row">
+        <div class="list-dot dot-green">🔒</div>
+        <div class="list-text muted">Re-authentication required before deletion to prevent unauthorized account removal</div>
+      </div>
+      <div class="list-row">
+        <div class="list-dot dot-green">💳</div>
+        <div class="list-text muted">Payment records anonymized (not deleted) to comply with financial regulations</div>
+      </div>
+    </div>
+    <p class="gdpr-note">Compliant with DPDP Act 2023 — your personal data has been fully erased upon account deletion.</p>
+  </div>
+
+</div>
+
+<footer>
+  <p>Made with ❤️ in India &nbsp;·&nbsp; <strong>© 2025 Dine Time.</strong> All rights reserved.</p>
+</footer>
+
+</body>
+</html>
