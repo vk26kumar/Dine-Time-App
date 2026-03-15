@@ -84,15 +84,9 @@ const performAccountDeletion = async (
 ): Promise<void> => {
   const auth = getAuth();
 
-  // 1. Delete Firebase Auth first — if this fails, nothing else runs
-  //    (prevents ghost accounts with deleted Firestore data)
-  if (auth.currentUser) {
-    await deleteUser(auth.currentUser);
-  }
-
-  // 2. Batch delete: user doc + restaurant docs (owner only)
+  // 1. Batch delete Firestore FIRST
+  //    If this fails, Auth is untouched and user can retry
   const batch = writeBatch(db);
-
   batch.delete(doc(db, "users", uid));
 
   const restaurantIds: string[] = [];
@@ -108,8 +102,7 @@ const performAccountDeletion = async (
 
   await batch.commit();
 
-  // 3. Anonymize bookings — runs after batch, non-blocking per-doc updates
-  //    Payment fields (amount, razorpayPaymentId, etc.) are untouched
+  // 2. Anonymize bookings — keeps payment info, removes personal details
   const anonPromises: Promise<void>[] = [];
 
   // Bookings made BY this user
@@ -128,7 +121,7 @@ const performAccountDeletion = async (
     );
   });
 
-  // Bookings AT owner's restaurants (in chunks of 30 — Firestore "in" limit)
+  // Bookings AT owner's restaurants (chunks of 30 — Firestore "in" limit)
   for (let i = 0; i < restaurantIds.length; i += 30) {
     const chunk = restaurantIds.slice(i, i + 30);
     const rBookingsSnap = await getDocs(
@@ -143,7 +136,6 @@ const performAccountDeletion = async (
         restaurantPhone: "",
         updatedAt: serverTimestamp(),
       };
-      // If the booking was also made by this user, anonymize that too
       if (data.userId === uid) {
         update.userId = "";
         update.userName = "Deleted User";
@@ -155,6 +147,12 @@ const performAccountDeletion = async (
   }
 
   await Promise.all(anonPromises);
+
+  // 3. Delete Firebase Auth LAST
+  //    Only runs after Firestore is fully cleaned up
+  if (auth.currentUser) {
+    await deleteUser(auth.currentUser);
+  }
 };
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -580,9 +578,7 @@ const st = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-
   content: { paddingHorizontal: 22, paddingTop: 20 },
-
   iconRing: {
     width: 80,
     height: 80,
@@ -602,7 +598,6 @@ const st = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-
   title: {
     fontSize: 22,
     fontWeight: "900",
@@ -618,7 +613,6 @@ const st = StyleSheet.create({
     lineHeight: 20,
     marginBottom: 18,
   },
-
   listBox: {
     backgroundColor: C.errorBg,
     borderRadius: 14,
@@ -660,7 +654,6 @@ const st = StyleSheet.create({
     lineHeight: 19,
     fontWeight: "500",
   },
-
   inputLabel: {
     fontSize: 12,
     fontWeight: "700",
@@ -682,7 +675,6 @@ const st = StyleSheet.create({
   },
   inputWrapError: { borderColor: C.error },
   input: { flex: 1, fontSize: 15, color: C.text, fontWeight: "500" },
-
   errorRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -695,7 +687,6 @@ const st = StyleSheet.create({
     borderColor: "rgba(255,75,75,0.2)",
   },
   errorText: { flex: 1, fontSize: 12, color: C.error, lineHeight: 17 },
-
   btnRow: { flexDirection: "row", gap: 10, marginBottom: 8 },
   cancelBtn: {
     flex: 1,
@@ -728,7 +719,6 @@ const st = StyleSheet.create({
     gap: 6,
   },
   deleteBtnText: { fontSize: 14, fontWeight: "700", color: C.white },
-
   progressSteps: { gap: 12, marginBottom: 16 },
   progressRow: {
     flexDirection: "row",
@@ -741,7 +731,6 @@ const st = StyleSheet.create({
     borderColor: C.divider,
   },
   progressText: { fontSize: 13, color: C.textSub, fontWeight: "500" },
-
   gdprNote: {
     fontSize: 11,
     color: C.textMuted,

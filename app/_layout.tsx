@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import { Slot, Stack, useRouter, useSegments } from "expo-router";
+import { useEffect, useState } from "react";
+import { Stack, useRouter, useSegments } from "expo-router";
 import { AuthProvider, useAuth } from "../contexts/AuthContext";
 import { LocationProvider } from "../contexts/LocationContext";
 import { PaperProvider } from "react-native-paper";
@@ -10,9 +10,11 @@ function RootLayoutNav() {
   const { user, userData, loading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+  const [appReady, setAppReady] = useState(false);
 
   useEffect(() => {
-    if (loading || (user && !userData)) return; // Wait for auth + Firestore data
+    // Don't do anything until Firebase Auth + Firestore both resolved
+    if (loading || (user && !userData)) return;
 
     const inAuthGroup = segments[0] === "(auth)";
     const inOnboardingGroup = segments[0] === "(onboarding)";
@@ -20,31 +22,34 @@ function RootLayoutNav() {
     const inOwnerGroup = segments[0] === "(owner)";
     const inAdminGroup = segments[0] === "(admin)";
 
-    // ✅ 1. If not logged in → go to landing
+    // 1. Not logged in → landing
     if (!user) {
       if (!inAuthGroup) {
         router.replace("/(auth)/landing");
       }
+      setAppReady(true);
       return;
     }
 
-    // ✅ 2. If onboarding not done → go to onboarding
-    if (!userData?.fullName || !userData?.phoneNumber) {
+    // 2. Onboarding not done → onboarding
+    if (!userData?.fullName?.trim() || !userData?.phoneNumber?.trim()) {
       if (!inOnboardingGroup) {
         router.replace("/(onboarding)/tell-us-about-you");
       }
+      setAppReady(true);
       return;
     }
 
-    // ✅ 3. If admin → go to admin dashboard
+    // 3. Admin → admin dashboard
     if (userData.isAdmin) {
       if (!inAdminGroup) {
         router.replace("/(admin)/dashboard");
       }
+      setAppReady(true);
       return;
     }
 
-    // ✅ 4. If owner/consumer → go to their respective sections
+    // 4. Owner/consumer → their sections
     if (userData.rolePreference === "owner") {
       if (!inOwnerGroup) {
         router.replace("/(owner)/my-restaurants");
@@ -54,10 +59,13 @@ function RootLayoutNav() {
         router.replace("/(consumer)/explore");
       }
     }
+
+    setAppReady(true);
   }, [user, userData, loading, segments]);
 
-  // ✅ Loading state (Firebase Auth + Firestore userData)
-  if (loading || (user && !userData)) {
+  // Block Stack from mounting until auth state is fully resolved
+  // This prevents landing page flash
+  if (!appReady) {
     return (
       <View
         style={{
@@ -72,7 +80,6 @@ function RootLayoutNav() {
     );
   }
 
-  // ✅ Main navigation stack
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(auth)" />
@@ -84,7 +91,6 @@ function RootLayoutNav() {
   );
 }
 
-// ✅ Root Layout Provider Wrapper
 export default function RootLayout() {
   return (
     <AuthProvider>

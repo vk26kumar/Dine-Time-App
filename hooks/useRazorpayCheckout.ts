@@ -1,6 +1,8 @@
 import { useState } from "react";
 import RazorpayCheckout from "react-native-razorpay";
 import { Alert } from "react-native";
+import { getDoc, doc } from "firebase/firestore";
+import { db, auth } from "../config/firebase";
 import paymentService from "../services/paymentService";
 
 interface InitiatePaymentProps {
@@ -45,7 +47,25 @@ export const useRazorpayCheckout = () => {
       const razorpayKey = process.env.EXPO_PUBLIC_RAZORPAY_KEY_ID;
       if (!razorpayKey) throw new Error("Razorpay key not configured");
 
-      // Safe tableIds — always string[]
+      // ── Fetch user details for prefill ──
+      const currentUser = auth.currentUser;
+      let prefillName = "";
+      let prefillEmail = "";
+      let prefillContact = "";
+
+      if (currentUser) {
+        const userSnap = await getDoc(doc(db, "users", currentUser.uid));
+        const userData = userSnap.data();
+        if (userData) {
+          prefillName = String(userData.fullName || "");
+          prefillEmail = String(userData.email || currentUser.email || "");
+          // Clean phone — Razorpay needs digits only, no +91 or spaces
+          const rawPhone = String(userData.phoneNumber || "");
+          prefillContact = rawPhone.replace(/\D/g, "").slice(-10); // last 10 digits
+        }
+      }
+
+      // ── Safe tableIds ──
       const rawTables = tableIds as unknown;
       const safeTableIds: string[] = Array.isArray(rawTables)
         ? (rawTables as any[]).map(String)
@@ -59,8 +79,7 @@ export const useRazorpayCheckout = () => {
       const totalAmount = Number(numberOfGuests) * Number(bookingFeePerPerson);
       const amountInPaise = Math.round(totalAmount * 100);
 
-      // ── Open Razorpay ──
-      // notes must be Record<string, string> only — no numbers, no arrays, no undefined
+      // ── Open Razorpay with prefilled user details ──
       const paymentResult = await RazorpayCheckout.open({
         name: "DineTime",
         description: `Table booking at ${restaurantName}`,
@@ -68,6 +87,11 @@ export const useRazorpayCheckout = () => {
         key: razorpayKey,
         amount: amountInPaise,
         theme: { color: "#FF5A5F" },
+        prefill: {
+          name: prefillName, // ← user's name prefilled
+          email: prefillEmail, // ← user's email prefilled
+          contact: prefillContact, // ← user's phone prefilled (no OTP typing)
+        },
       });
 
       // ── Payment succeeded — create booking ──
@@ -83,7 +107,6 @@ export const useRazorpayCheckout = () => {
         tableIds: safeTableIds,
         specialRequests: specialRequests || "",
         occasion: occasion || "",
-        // Only pass Razorpay fields if they exist — undefined crashes Firestore
         ...(paymentResult.razorpay_payment_id && {
           razorpayPaymentId: paymentResult.razorpay_payment_id,
         }),
@@ -102,7 +125,7 @@ export const useRazorpayCheckout = () => {
         },
       ]);
     } catch (error: any) {
-      // Code 2 = user dismissed the Razorpay modal — not an error
+      // Code 2 = user dismissed Razorpay modal — not an error
       if (error?.code === 2) return;
 
       const message =
