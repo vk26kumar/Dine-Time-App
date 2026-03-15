@@ -17,6 +17,8 @@ interface AuthContextType {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
+  createAuthAccount: (email: string, password: string) => Promise<void>;
+  createUserDocument: (rolePreference: RolePreference) => Promise<void>;
   logout: () => Promise<void>;
   updateUserProfile: (data: Partial<User>) => Promise<void>;
 }
@@ -75,16 +77,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     };
   }, []);
 
-  // 🔹 Sign In — block unverified users
+  // 🔹 Sign In — no verification block needed
+  // Verification is guaranteed during signup flow
   const signIn = async (email: string, password: string) => {
-    const result = await signInWithEmailAndPassword(auth, email, password);
-    if (!result.user.emailVerified) {
-      await signOut(auth);
-      throw new Error("Please verify your email before logging in.");
-    }
+    await signInWithEmailAndPassword(auth, email, password);
   };
 
-  // 🔹 Sign Up — send email verification and create Firestore document
+  // 🔹 Sign Up — original kept for backward compatibility
   const signUp = async (email: string, password: string) => {
     console.log("AuthContext: signUp called");
     try {
@@ -95,7 +94,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       );
       console.log("AuthContext: signUp successful", result.user.uid);
 
-      // Create initial user document with minimal data
       await setDoc(doc(db, "users", result.user.uid), {
         uid: result.user.uid,
         email: result.user.email,
@@ -117,6 +115,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       console.error("AuthContext: signUp error", error);
       throw error;
     }
+  };
+
+  // 🔹 NEW — Step 1 of new signup flow
+  // Creates Firebase Auth account only, no Firestore doc yet
+  const createAuthAccount = async (email: string, password: string) => {
+    const existing = auth.currentUser;
+    // If already created with same email skip recreation
+    if (existing && existing.email === email) return;
+    await createUserWithEmailAndPassword(auth, email, password);
+  };
+
+  // 🔹 NEW — Step 2 of new signup flow
+  // Writes Firestore doc only — Auth account already exists from createAuthAccount
+  // fullName and phoneNumber left empty — user fills from profile later
+  const createUserDocument = async (rolePreference: RolePreference) => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error("No authenticated user found.");
+
+    await setDoc(doc(db, "users", currentUser.uid), {
+      uid: currentUser.uid,
+      email: currentUser.email,
+      fullName: "",
+      phoneNumber: "",
+      rolePreference,
+      location: null,
+      coordinates: null,
+      savedAddresses: [],
+      isAdmin: false,
+      ownedRestaurants: [],
+      bookingHistory: [],
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    console.log(
+      "AuthContext: User document created with role:",
+      rolePreference,
+    );
   };
 
   const logout = async () => {
@@ -147,7 +183,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       await setDoc(doc(db, "users", user.uid), updateData, { merge: true });
       console.log("AuthContext: User profile updated in Firestore");
 
-      // Update local state immediately
       setUserData((prev) => {
         if (!prev) return null;
         const updated = {
@@ -172,6 +207,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         loading,
         signIn,
         signUp,
+        createAuthAccount,
+        createUserDocument,
         logout,
         updateUserProfile,
       }}

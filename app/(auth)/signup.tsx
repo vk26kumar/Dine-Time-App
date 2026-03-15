@@ -18,8 +18,10 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../contexts/AuthContext";
 import { getAuth, sendEmailVerification } from "firebase/auth";
+import { RolePreference } from "../../types";
 
 const { width: SW, height: SH } = Dimensions.get("window");
+const TOGGLE_WIDTH = SW - 44;
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
 type ToastType = "success" | "error" | "info";
@@ -97,17 +99,21 @@ function Toast({
   );
 }
 
+type VerifyState = "idle" | "sending" | "sent" | "verified";
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 export default function SignupScreen() {
   const router = useRouter();
-  const { signUp } = useAuth();
+  const { createAuthAccount, createUserDocument } = useAuth();
   const insets = useSafeAreaInsets();
 
+  const [role, setRole] = useState<RolePreference>("consumer");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [verifyState, setVerifyState] = useState<VerifyState>("idle");
   const [loading, setLoading] = useState(false);
   const [focused, setFocused] = useState<string | null>(null);
   const [toast, setToast] = useState({
@@ -117,16 +123,19 @@ export default function SignupScreen() {
     message: "",
   });
 
-  const shakeX = useRef(new Animated.Value(0)).current;
   const orb1 = useRef(new Animated.Value(1)).current;
   const orb2 = useRef(new Animated.Value(1)).current;
   const logoScale = useRef(new Animated.Value(0.85)).current;
   const logoOpacity = useRef(new Animated.Value(0)).current;
   const formOpacity = useRef(new Animated.Value(0)).current;
   const formSlide = useRef(new Animated.Value(24)).current;
+  const shakeX = useRef(new Animated.Value(0)).current;
+  const toggleAnim = useRef(new Animated.Value(0)).current;
+  const verifyScale = useRef(new Animated.Value(0)).current;
 
   const passwordRef = useRef<TextInput>(null);
   const confirmRef = useRef<TextInput>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     Animated.sequence([
@@ -172,6 +181,7 @@ export default function SignupScreen() {
         }),
       ]),
     ).start();
+
     Animated.loop(
       Animated.sequence([
         Animated.timing(orb2, {
@@ -186,6 +196,10 @@ export default function SignupScreen() {
         }),
       ]),
     ).start();
+
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
   }, []);
 
   const showToast = (type: ToastType, title: string, message = "") => {
@@ -222,43 +236,98 @@ export default function SignupScreen() {
       }),
     ]).start();
 
-  const getReadableError = (code: string) => {
-    switch (code) {
-      case "auth/email-already-in-use":
-        return "This email is already registered. Try signing in.";
-      case "auth/invalid-email":
-        return "Please enter a valid email address.";
-      case "auth/weak-password":
-        return "Password too weak. Use at least 6 characters.";
-      case "auth/network-request-failed":
-        return "No connection. Check your internet.";
-      case "auth/too-many-requests":
-        return "Verification link already sent. Check your inbox.";
-      default:
-        return "Something went wrong. Please try again.";
-    }
+  // ── Role Toggle ──
+  const handleRoleToggle = (newRole: RolePreference) => {
+    setRole(newRole);
+    Animated.spring(toggleAnim, {
+      toValue: newRole === "consumer" ? 0 : 1,
+      tension: 70,
+      friction: 12,
+      useNativeDriver: false,
+    }).start();
   };
 
-  const passwordStrength = () => {
-    if (!password) return null;
-    if (password.length < 6)
-      return { label: "Too short", color: "#EF4444", w: "25%" };
-    if (password.length < 8)
-      return { label: "Weak", color: "#FF9F43", w: "50%" };
-    if (!/[A-Z]/.test(password) || !/[0-9]/.test(password))
-      return { label: "Fair", color: "#FBBF24", w: "65%" };
-    return { label: "Strong", color: "#10B981", w: "100%" };
+  const toggleTranslate = toggleAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [2, TOGGLE_WIDTH / 2],
+  });
+
+  // ── Poll for email verification ──
+  const startPolling = () => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = setInterval(async () => {
+      const auth = getAuth();
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        await currentUser.reload();
+        if (currentUser.emailVerified) {
+          clearInterval(pollRef.current!);
+          pollRef.current = null;
+          setVerifyState("verified");
+          Animated.spring(verifyScale, {
+            toValue: 1,
+            tension: 80,
+            friction: 8,
+            useNativeDriver: true,
+          }).start();
+        }
+      }
+    }, 3000);
   };
 
-  const strength = passwordStrength();
-
-  const handleSignup = async () => {
-    if (!email || !password || !confirmPassword) {
-      shake();
-      showToast("error", "Missing fields", "Please fill in all fields.");
+  // ── Send verification ──
+  const handleSendVerification = async () => {
+    if (!email.trim() || !/\S+@\S+\.\S+/.test(email)) {
+      showToast("error", "Invalid email", "Enter a valid email address.");
       return;
     }
-    if (password.length < 6) {
+    if (!password || password.length < 6) {
+      showToast(
+        "error",
+        "Set your password",
+        "Enter at least 6 characters first.",
+      );
+      return;
+    }
+    setVerifyState("sending");
+    try {
+      await createAuthAccount(email.trim(), password);
+      const auth = getAuth();
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error("No user found.");
+      await sendEmailVerification(currentUser);
+      setVerifyState("sent");
+      startPolling();
+      showToast(
+        "info",
+        "Verification sent",
+        `Check your inbox at ${email.trim()}`,
+      );
+    } catch (e: any) {
+      setVerifyState("idle");
+      showToast(
+        "error",
+        "Failed to send",
+        e.code === "auth/email-already-in-use"
+          ? "This email is already registered. Try signing in."
+          : e.code === "auth/invalid-email"
+            ? "Enter a valid email address."
+            : e.message,
+      );
+    }
+  };
+
+  // ── Complete Signup ──
+  const handleSignup = async () => {
+    if (verifyState !== "verified") {
+      showToast(
+        "error",
+        "Email not verified",
+        "Please verify your email first.",
+      );
+      return;
+    }
+    if (!password || password.length < 6) {
       shake();
       showToast("error", "Weak password", "Use at least 6 characters.");
       return;
@@ -272,50 +341,41 @@ export default function SignupScreen() {
       );
       return;
     }
-
     setLoading(true);
     try {
-      await signUp(email, password);
-
-      const auth = getAuth();
-      let attempts = 0;
-      while (!auth.currentUser && attempts < 5) {
-        await new Promise((r) => setTimeout(r, 300));
-        attempts++;
-      }
-      if (!auth.currentUser) throw new Error("USER_INIT_FAILED");
-      await sendEmailVerification(auth.currentUser);
-
-      showToast(
-        "success",
-        "Verification sent",
-        "Check your inbox before continuing.",
-      );
-      setTimeout(() => router.replace("/(onboarding)/tell-us-about-you"), 1200);
-    } catch (error: any) {
-      const code = error?.code || error?.message;
-      if (code === "auth/too-many-requests") {
-        showToast(
-          "info",
-          "Email sent",
-          "Check your inbox for the verification link.",
-        );
-        setTimeout(
-          () => router.replace("/(onboarding)/tell-us-about-you"),
-          1200,
-        );
-      } else {
-        shake();
-        showToast("error", "Signup failed", getReadableError(code));
-      }
+      // Auth account already created in handleSendVerification
+      // Just write Firestore doc — name/phone empty, filled from profile later
+      await createUserDocument(role);
+      showToast("success", "Account created!", "Welcome to DineTime.");
+      setTimeout(() => {
+        if (role === "owner") {
+          router.replace("/(owner)/my-restaurants");
+        } else {
+          router.replace("/(consumer)/explore");
+        }
+      }, 800);
+    } catch (e: any) {
+      shake();
+      showToast("error", "Signup failed", e.message);
     } finally {
       setLoading(false);
     }
   };
 
+  const passwordStrength = () => {
+    if (!password) return null;
+    if (password.length < 6)
+      return { label: "Too short", color: "#EF4444", w: "25%" };
+    if (password.length < 8)
+      return { label: "Weak", color: "#FF9F43", w: "50%" };
+    if (!/[A-Z]/.test(password) || !/[0-9]/.test(password))
+      return { label: "Fair", color: "#FBBF24", w: "65%" };
+    return { label: "Strong", color: "#10B981", w: "100%" };
+  };
+  const strength = passwordStrength();
+
   return (
     <View style={styles.root}>
-      {/* Toast */}
       <View
         style={[styles.toastWrap, { top: insets.top + 12 }]}
         pointerEvents="none"
@@ -333,7 +393,7 @@ export default function SignupScreen() {
         showsVerticalScrollIndicator={false}
         bounces={false}
       >
-        {/* ── Hero ─────────────────────────────────────────────────────────── */}
+        {/* ── Hero ── */}
         <View style={[styles.hero, { paddingTop: insets.top }]}>
           <LinearGradient
             colors={["#0D1826", "#132338", "#0D1826"]}
@@ -341,21 +401,16 @@ export default function SignupScreen() {
             end={{ x: 1, y: 1 }}
             style={StyleSheet.absoluteFill}
           />
-
-          {/* Orbs */}
           <Animated.View
             style={[styles.orb1, { transform: [{ scale: orb1 }] }]}
           />
           <Animated.View
             style={[styles.orb2, { transform: [{ scale: orb2 }] }]}
           />
-
-          {/* Diagonal lines */}
           {[0.15, 0.38, 0.62, 0.85].map((r, i) => (
             <View key={i} style={[styles.diag, { left: SW * r }]} />
           ))}
 
-          {/* Back */}
           <TouchableOpacity
             onPress={() => router.back()}
             style={[styles.backBtn, { top: insets.top + 10 }]}
@@ -368,14 +423,12 @@ export default function SignupScreen() {
             />
           </TouchableOpacity>
 
-          {/* ── Centered brand ── */}
           <Animated.View
             style={[
               styles.brandWrap,
               { opacity: logoOpacity, transform: [{ scale: logoScale }] },
             ]}
           >
-            {/* ── DineTime Logo Image ── */}
             <Image
               source={require("../../assets/DTime.png")}
               style={styles.logoImage}
@@ -386,13 +439,12 @@ export default function SignupScreen() {
             </Text>
           </Animated.View>
 
-          {/* Arch */}
           <View style={styles.arch}>
             <View style={styles.archShape} />
           </View>
         </View>
 
-        {/* ── Form ─────────────────────────────────────────────────────────── */}
+        {/* ── Form ── */}
         <Animated.View
           style={[
             styles.formWrap,
@@ -406,27 +458,93 @@ export default function SignupScreen() {
               Start your dining journey today
             </Text>
 
-            {/* ── Email ── */}
+            {/* ── Role Toggle ── */}
+            <View style={styles.toggleWrap}>
+              <Animated.View
+                style={[
+                  styles.toggleThumb,
+                  { transform: [{ translateX: toggleTranslate }] },
+                ]}
+              >
+                <LinearGradient
+                  colors={["#FF5A5F", "#FF7A2F", "#FF9F43"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={StyleSheet.absoluteFill}
+                />
+              </Animated.View>
+              <TouchableOpacity
+                style={styles.toggleBtn}
+                onPress={() => handleRoleToggle("consumer")}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons
+                  name="restaurant-menu"
+                  size={14}
+                  color={role === "consumer" ? "#FFF" : "#9CA3AF"}
+                />
+                <Text
+                  style={[
+                    styles.toggleLabel,
+                    role === "consumer" && styles.toggleLabelActive,
+                  ]}
+                >
+                  Consumer
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.toggleBtn}
+                onPress={() => handleRoleToggle("owner")}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons
+                  name="storefront"
+                  size={14}
+                  color={role === "owner" ? "#FFF" : "#9CA3AF"}
+                />
+                <Text
+                  style={[
+                    styles.toggleLabel,
+                    role === "owner" && styles.toggleLabelActive,
+                  ]}
+                >
+                  Owner
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* ── Email + Verify ── */}
             <View style={styles.field}>
               <Text style={styles.fieldLabel}>Email address</Text>
               <View
                 style={[
                   styles.inputWrap,
                   focused === "email" && styles.inputWrapFocused,
+                  verifyState === "verified" && styles.inputWrapVerified,
                 ]}
               >
                 <LinearGradient
                   colors={
-                    focused === "email"
-                      ? ["#FF5A5F", "#FF9F43"]
-                      : ["#F3F4F6", "#F3F4F6"]
+                    verifyState === "verified"
+                      ? ["#059669", "#059669"]
+                      : focused === "email"
+                        ? ["#FF5A5F", "#FF9F43"]
+                        : ["#F3F4F6", "#F3F4F6"]
                   }
                   style={styles.inputStrip}
                 >
                   <MaterialIcons
-                    name="mail-outline"
+                    name={
+                      verifyState === "verified"
+                        ? "mark-email-read"
+                        : "mail-outline"
+                    }
                     size={16}
-                    color={focused === "email" ? "#FFF" : "#9CA3AF"}
+                    color={
+                      verifyState === "verified" || focused === "email"
+                        ? "#FFF"
+                        : "#9CA3AF"
+                    }
                   />
                 </LinearGradient>
                 <TextInput
@@ -434,27 +552,86 @@ export default function SignupScreen() {
                   placeholder="you@example.com"
                   placeholderTextColor="#C4CAD4"
                   value={email}
-                  onChangeText={setEmail}
+                  onChangeText={(t) => {
+                    setEmail(t);
+                    if (verifyState !== "idle") {
+                      setVerifyState("idle");
+                      verifyScale.setValue(0);
+                      if (pollRef.current) {
+                        clearInterval(pollRef.current);
+                        pollRef.current = null;
+                      }
+                    }
+                  }}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
                   autoComplete="email"
-                  editable={!loading}
+                  editable={!loading && verifyState !== "verified"}
                   returnKeyType="next"
                   onSubmitEditing={() => passwordRef.current?.focus()}
                   onFocus={() => setFocused("email")}
                   onBlur={() => setFocused(null)}
                 />
-                {email.length > 0 && (
+                {verifyState === "idle" && (
                   <TouchableOpacity
-                    onPress={() => setEmail("")}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    style={styles.inputAction}
+                    onPress={handleSendVerification}
+                    style={styles.verifyBtn}
+                    activeOpacity={0.8}
                   >
-                    <MaterialIcons name="cancel" size={16} color="#D1D5DB" />
+                    <LinearGradient
+                      colors={["#FF5A5F", "#FF9F43"]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={styles.verifyBtnGrad}
+                    >
+                      <Text style={styles.verifyBtnText}>Verify</Text>
+                    </LinearGradient>
                   </TouchableOpacity>
                 )}
+                {(verifyState === "sending" || verifyState === "sent") && (
+                  <View style={styles.verifyStatus}>
+                    <ActivityIndicator
+                      size="small"
+                      color={verifyState === "sending" ? "#FF5A5F" : "#2563EB"}
+                    />
+                  </View>
+                )}
+                {verifyState === "verified" && (
+                  <Animated.View
+                    style={[
+                      styles.verifyStatus,
+                      { transform: [{ scale: verifyScale }] },
+                    ]}
+                  >
+                    <MaterialIcons name="verified" size={20} color="#059669" />
+                  </Animated.View>
+                )}
               </View>
+              {verifyState === "sent" && (
+                <View style={styles.verifyHint}>
+                  <MaterialIcons
+                    name="info-outline"
+                    size={12}
+                    color="#2563EB"
+                  />
+                  <Text style={styles.verifyHintText}>
+                    Link sent · Checking automatically…
+                  </Text>
+                </View>
+              )}
+              {verifyState === "verified" && (
+                <View style={styles.verifyHint}>
+                  <MaterialIcons
+                    name="check-circle"
+                    size={12}
+                    color="#059669"
+                  />
+                  <Text style={[styles.verifyHintText, { color: "#059669" }]}>
+                    Email verified!
+                  </Text>
+                </View>
+              )}
             </View>
 
             {/* ── Password ── */}
@@ -508,8 +685,6 @@ export default function SignupScreen() {
                   />
                 </TouchableOpacity>
               </View>
-
-              {/* Strength bar */}
               {strength && (
                 <View style={styles.strengthWrap}>
                   <View style={styles.strengthBg}>
@@ -617,7 +792,7 @@ export default function SignupScreen() {
               <Text style={styles.termsLink}>Privacy Policy</Text>
             </Text>
 
-            {/* ── Create account button ── */}
+            {/* ── Create Account — always glowing ── */}
             <TouchableOpacity
               onPress={handleSignup}
               disabled={loading}
@@ -647,7 +822,7 @@ export default function SignupScreen() {
               </LinearGradient>
             </TouchableOpacity>
 
-            {/* ── Inline sign in prompt ── */}
+            {/* ── Sign In Prompt ── */}
             <View style={styles.signinRow}>
               <Text style={styles.signinPrompt}>Already have an account? </Text>
               <TouchableOpacity
@@ -670,13 +845,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#F8F9FB" },
   scrollContent: { flexGrow: 1 },
 
-  // Toast
-  toastWrap: {
-    position: "absolute",
-    left: 16,
-    right: 16,
-    zIndex: 9999,
-  },
+  toastWrap: { position: "absolute", left: 16, right: 16, zIndex: 9999 },
   toast: {
     flexDirection: "row",
     alignItems: "center",
@@ -701,10 +870,9 @@ const styles = StyleSheet.create({
   toastTitle: { fontSize: 13, fontWeight: "800", marginBottom: 2 },
   toastMsg: { fontSize: 11, color: "#6B7280", lineHeight: 15 },
 
-  // Hero
   hero: {
     height: SH * 0.3,
-    minHeight: 195,
+    minHeight: 190,
     overflow: "hidden",
     justifyContent: "center",
     alignItems: "center",
@@ -746,25 +914,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-
-  // Brand
-  brandWrap: {
-    alignItems: "center",
-    gap: 10,
-    paddingBottom: 36,
-  },
-  logoImage: {
-    width: 90,
-    height: 90,
-    borderRadius: 20,
-  },
+  brandWrap: { alignItems: "center", gap: 10, paddingBottom: 36 },
+  logoImage: { width: 90, height: 90, borderRadius: 20 },
   brandCaption: {
     fontSize: 11,
     color: "rgba(255,255,255,0.38)",
     fontWeight: "500",
     letterSpacing: 0.5,
   },
-
   arch: {
     position: "absolute",
     bottom: -1,
@@ -784,7 +941,6 @@ const styles = StyleSheet.create({
     borderTopRightRadius: SW * 0.65,
   },
 
-  // Form
   formWrap: {
     flex: 1,
     backgroundColor: "#F8F9FB",
@@ -802,10 +958,42 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#9CA3AF",
     lineHeight: 18,
-    marginBottom: 22,
+    marginBottom: 20,
   },
 
-  // Fields
+  // Toggle
+  toggleWrap: {
+    flexDirection: "row",
+    backgroundColor: "#F0F1F5",
+    borderRadius: 12,
+    padding: 2,
+    marginBottom: 22,
+    position: "relative",
+    height: 42,
+    width: TOGGLE_WIDTH,
+    alignSelf: "center",
+  },
+  toggleThumb: {
+    position: "absolute",
+    top: 2,
+    width: TOGGLE_WIDTH / 2 - 2,
+    height: 38,
+    borderRadius: 10,
+    overflow: "hidden",
+    zIndex: 0,
+  },
+  toggleBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    zIndex: 1,
+    borderRadius: 10,
+  },
+  toggleLabel: { fontSize: 13, fontWeight: "700", color: "#9CA3AF" },
+  toggleLabelActive: { color: "#FFFFFF" },
+
   field: { marginBottom: 14 },
   fieldLabel: {
     fontSize: 11,
@@ -842,6 +1030,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 8,
   },
+  inputWrapVerified: {
+    borderColor: "#059669",
+    shadowColor: "#059669",
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+  },
   inputStrip: {
     width: 42,
     height: "100%" as any,
@@ -863,6 +1057,24 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+
+  // Verify
+  verifyBtn: { marginRight: 6, borderRadius: 8, overflow: "hidden" },
+  verifyBtnGrad: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 },
+  verifyBtnText: { fontSize: 12, fontWeight: "800", color: "#FFF" },
+  verifyStatus: {
+    paddingHorizontal: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  verifyHint: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginTop: 6,
+    paddingHorizontal: 2,
+  },
+  verifyHintText: { fontSize: 11, color: "#2563EB", fontWeight: "600" },
 
   // Strength
   strengthWrap: {
@@ -886,7 +1098,6 @@ const styles = StyleSheet.create({
     textAlign: "right",
   },
 
-  // Terms
   termsText: {
     fontSize: 12,
     color: "#9CA3AF",
@@ -896,7 +1107,7 @@ const styles = StyleSheet.create({
   },
   termsLink: { color: "#FF5A5F", fontWeight: "700" },
 
-  // Create account button
+  // Create Account button — always glowing
   signupOuter: {
     borderRadius: 13,
     overflow: "hidden",
@@ -929,21 +1140,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  // Inline sign in text
   signinRow: {
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
   },
-  signinPrompt: {
-    fontSize: 13,
-    color: "#9CA3AF",
-    fontWeight: "500",
-  },
-  signinLink: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#FF5A5F",
-    textDecorationColor: "#FF5A5F",
-  },
+  signinPrompt: { fontSize: 13, color: "#9CA3AF", fontWeight: "500" },
+  signinLink: { fontSize: 13, fontWeight: "700", color: "#FF5A5F" },
 });

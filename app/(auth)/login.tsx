@@ -1,4 +1,3 @@
-// app/(auth)/login.tsx
 import React, { useState, useRef, useEffect } from "react";
 import {
   View,
@@ -123,7 +122,6 @@ export default function LoginScreen() {
   const logoOpacity = useRef(new Animated.Value(0)).current;
   const formOpacity = useRef(new Animated.Value(0)).current;
   const formSlide = useRef(new Animated.Value(24)).current;
-
   const passwordRef = useRef<TextInput>(null);
 
   useEffect(() => {
@@ -170,6 +168,7 @@ export default function LoginScreen() {
         }),
       ]),
     ).start();
+
     Animated.loop(
       Animated.sequence([
         Animated.timing(orb2, {
@@ -253,7 +252,9 @@ export default function LoginScreen() {
     }
     setLoading(true);
     try {
-      await signIn(email, password);
+      await signIn(email.trim(), password);
+      // No manual redirect — _layout.tsx handles it
+      // based on userData.rolePreference from Firestore
     } catch (e: any) {
       shake();
       showToast(
@@ -265,11 +266,13 @@ export default function LoginScreen() {
             ? "Wrong password."
             : e.code === "auth/invalid-email"
               ? "Invalid email."
-              : e.code === "auth/too-many-requests"
-                ? "Too many attempts. Try later."
-                : e.code === "auth/network-request-failed"
-                  ? "No connection."
-                  : e.message,
+              : e.code === "auth/invalid-credential"
+                ? "Invalid email or password."
+                : e.code === "auth/too-many-requests"
+                  ? "Too many attempts. Try later."
+                  : e.code === "auth/network-request-failed"
+                    ? "No connection."
+                    : e.message,
       );
     } finally {
       setLoading(false);
@@ -278,7 +281,6 @@ export default function LoginScreen() {
 
   return (
     <View style={styles.root}>
-      {/* Toast — absolute top */}
       <View
         style={[styles.toastWrap, { top: insets.top + 12 }]}
         pointerEvents="none"
@@ -296,7 +298,7 @@ export default function LoginScreen() {
         showsVerticalScrollIndicator={false}
         bounces={false}
       >
-        {/* ── Hero ─────────────────────────────────────────────────────────── */}
+        {/* ── Hero ── */}
         <View style={[styles.hero, { paddingTop: insets.top }]}>
           <LinearGradient
             colors={["#0D1826", "#132338", "#0D1826"]}
@@ -304,21 +306,16 @@ export default function LoginScreen() {
             end={{ x: 1, y: 1 }}
             style={StyleSheet.absoluteFill}
           />
-
-          {/* Orbs */}
           <Animated.View
             style={[styles.orb1, { transform: [{ scale: orb1 }] }]}
           />
           <Animated.View
             style={[styles.orb2, { transform: [{ scale: orb2 }] }]}
           />
-
-          {/* Subtle diagonal lines */}
           {[0.15, 0.38, 0.62, 0.85].map((r, i) => (
             <View key={i} style={[styles.diag, { left: SW * r }]} />
           ))}
 
-          {/* Back */}
           <TouchableOpacity
             onPress={() => router.back()}
             style={[styles.backBtn, { top: insets.top + 10 }]}
@@ -331,30 +328,26 @@ export default function LoginScreen() {
             />
           </TouchableOpacity>
 
-          {/* ── Centered Brand mark ── */}
           <Animated.View
             style={[
               styles.brandWrap,
               { opacity: logoOpacity, transform: [{ scale: logoScale }] },
             ]}
           >
-            {/* ── DineTime Logo Image ── */}
             <Image
               source={require("../../assets/DTime.png")}
               style={styles.logoImage}
               resizeMode="contain"
             />
-
             <Text style={styles.brandCaption}>Your table is waiting ✦</Text>
           </Animated.View>
 
-          {/* Arch into form */}
           <View style={styles.arch}>
             <View style={styles.archShape} />
           </View>
         </View>
 
-        {/* ── Form ─────────────────────────────────────────────────────────── */}
+        {/* ── Form ── */}
         <Animated.View
           style={[
             styles.formWrap,
@@ -481,7 +474,7 @@ export default function LoginScreen() {
               </View>
             </View>
 
-            {/* ── Sign in button ── */}
+            {/* ── Sign In Button ── */}
             <TouchableOpacity
               onPress={handleLogin}
               disabled={loading}
@@ -511,7 +504,7 @@ export default function LoginScreen() {
               </LinearGradient>
             </TouchableOpacity>
 
-            {/* ── Inline sign up prompt ── */}
+            {/* ── Sign Up Prompt ── */}
             <View style={styles.signupRow}>
               <Text style={styles.signupPrompt}>Don't have an account? </Text>
               <TouchableOpacity
@@ -534,13 +527,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#F8F9FB" },
   scrollContent: { flexGrow: 1 },
 
-  // Toast
-  toastWrap: {
-    position: "absolute",
-    left: 16,
-    right: 16,
-    zIndex: 9999,
-  },
+  toastWrap: { position: "absolute", left: 16, right: 16, zIndex: 9999 },
   toast: {
     flexDirection: "row",
     alignItems: "center",
@@ -565,7 +552,6 @@ const styles = StyleSheet.create({
   toastTitle: { fontSize: 13, fontWeight: "800", marginBottom: 2 },
   toastMsg: { fontSize: 11, color: "#6B7280", lineHeight: 15 },
 
-  // Hero
   hero: {
     height: SH * 0.32,
     minHeight: 200,
@@ -610,25 +596,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-
-  // Brand
-  brandWrap: {
-    alignItems: "center",
-    gap: 10,
-    paddingBottom: 36,
-  },
-  logoImage: {
-    width: 90,
-    height: 90,
-    borderRadius: 20,
-  },
+  brandWrap: { alignItems: "center", gap: 10, paddingBottom: 36 },
+  logoImage: { width: 90, height: 90, borderRadius: 20 },
   brandCaption: {
     fontSize: 11,
     color: "rgba(255,255,255,0.38)",
     fontWeight: "500",
     letterSpacing: 0.5,
   },
-
   arch: {
     position: "absolute",
     bottom: -1,
@@ -668,7 +643,6 @@ const styles = StyleSheet.create({
     marginBottom: 22,
   },
 
-  // Fields
   field: { marginBottom: 14 },
   fieldLabel: {
     fontSize: 11,
@@ -728,7 +702,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  // Sign in
   signInOuter: {
     borderRadius: 13,
     overflow: "hidden",
@@ -762,21 +735,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  // Inline signup text
   signupRow: {
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
   },
-  signupPrompt: {
-    fontSize: 13,
-    color: "#9CA3AF",
-    fontWeight: "500",
-  },
-  signupLink: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#FF5A5F",
-    textDecorationColor: "#FF5A5F",
-  },
+  signupPrompt: { fontSize: 13, color: "#9CA3AF", fontWeight: "500" },
+  signupLink: { fontSize: 13, fontWeight: "700", color: "#FF5A5F" },
 });

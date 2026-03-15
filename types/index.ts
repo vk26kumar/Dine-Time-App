@@ -18,8 +18,8 @@ export interface SavedAddress {
 export interface User {
   uid: string;
   email: string;
-  phoneNumber: string;
-  fullName: string;
+  phoneNumber?: string; // optional — user can add later from profile
+  fullName?: string; // optional — user can add later from profile
   location: string | null;
   coordinates: Coordinates | null;
   savedAddresses?: SavedAddress[];
@@ -144,8 +144,7 @@ export interface Restaurant {
   amenities: string[];
   features: string[];
 
-  // Booking Fee — this is the single source of truth for pricing.
-  // Use getPriceTier() / getPriceLabel() for display purposes only.
+  // Booking Fee
   bookingFeePerPerson: number;
   cancellationPolicy: CancellationPolicy;
 
@@ -182,7 +181,6 @@ export type PaymentMethod =
 export type CancelledBy = "user" | "restaurant" | "admin";
 
 export interface Payment {
-  /** Total charged = perPersonFee × totalGuests */
   amount: number;
   perPersonFee: number;
   totalGuests: number;
@@ -207,23 +205,17 @@ export interface Booking {
   userPhone: string;
   userEmail: string;
 
-  // Booking Details
   date: Date;
   timeSlot: string;
   numberOfGuests: number;
   tableIds: string[];
 
-  // Status
   status: BookingStatus;
-
-  // Payment
   payment: Payment;
 
-  // Special Requests
   specialRequests?: string;
   occasion?: string;
 
-  // Timestamps
   createdAt: Date;
   updatedAt: Date;
   cancelledAt?: Date;

@@ -23,6 +23,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
+import { getAuth } from "firebase/auth";
 import { DeleteAccountModal } from "../../components/common/DeleteAccountModal";
 
 const CLOUD_NAME = "dzbazi9fw";
@@ -234,6 +235,7 @@ const ConfirmModal = ({
   );
 };
 
+// ── FIX: Get email from Firebase Auth directly, make it read-only ──
 const EditProfileModal = ({
   visible,
   onClose,
@@ -247,18 +249,19 @@ const EditProfileModal = ({
 }) => {
   const { slideAnim, fadeAnim } = useSheetAnim(visible, 500);
   const [name, setName] = useState(userData?.fullName || "");
-  const [email, setEmail] = useState(userData?.email || "");
   const [phone, setPhone] = useState(userData?.phoneNumber || "");
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // ── Email comes from Firebase Auth — always accurate, read-only ──
+  const authEmail = getAuth().currentUser?.email || "";
+
   useEffect(() => {
     if (visible) {
       setName(userData?.fullName || "");
-      setEmail(userData?.email || "");
       setPhone(userData?.phoneNumber || "");
     }
-  }, [visible]);
+  }, [visible, userData]);
 
   const handlePickImage = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -277,15 +280,19 @@ const EditProfileModal = ({
   };
 
   const handleSave = async () => {
-    if (!name.trim()) return;
     setSaving(true);
-    await updateUserProfile?.({
-      fullName: name.trim(),
-      email: email.trim(),
-      phoneNumber: phone.trim(),
-    });
-    setSaving(false);
-    onClose();
+    try {
+      // Only update fullName and phoneNumber — email is Firebase Auth, not editable here
+      await updateUserProfile?.({
+        fullName: name.trim(),
+        phoneNumber: phone.trim(),
+      });
+      onClose();
+    } catch (e) {
+      console.error("Save profile error:", e);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const initials = userData?.fullName?.charAt(0).toUpperCase() || "U";
@@ -327,6 +334,7 @@ const EditProfileModal = ({
               showsVerticalScrollIndicator={false}
               style={{ paddingHorizontal: 20 }}
             >
+              {/* Avatar */}
               <View style={{ alignItems: "center", marginBottom: 24 }}>
                 <TouchableOpacity
                   onPress={handlePickImage}
@@ -360,53 +368,74 @@ const EditProfileModal = ({
                 </TouchableOpacity>
                 <Text style={styles.changePhotoText}>Tap to change photo</Text>
               </View>
-              {[
-                {
-                  label: "Full Name",
-                  value: name,
-                  setter: setName,
-                  icon: "person",
-                  placeholder: "Your name",
-                  keyboard: "default",
-                },
-                {
-                  label: "Email",
-                  value: email,
-                  setter: setEmail,
-                  icon: "email",
-                  placeholder: "your@email.com",
-                  keyboard: "email-address",
-                },
-                {
-                  label: "Phone",
-                  value: phone,
-                  setter: setPhone,
-                  icon: "phone",
-                  placeholder: "+91 XXXXX XXXXX",
-                  keyboard: "phone-pad",
-                },
-              ].map((field) => (
-                <View key={field.label} style={styles.fieldGroup}>
-                  <Text style={styles.fieldLabel}>{field.label}</Text>
-                  <View style={styles.fieldInputWrap}>
-                    <MaterialIcons
-                      name={field.icon as any}
-                      size={17}
-                      color={C.accentSoft}
-                      style={{ marginRight: 8 }}
-                    />
-                    <TextInput
-                      style={styles.fieldInput}
-                      value={field.value}
-                      onChangeText={field.setter}
-                      placeholder={field.placeholder}
-                      placeholderTextColor={C.textMuted}
-                      keyboardType={field.keyboard as any}
-                      autoCapitalize="none"
-                    />
-                  </View>
+
+              {/* Full Name */}
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>Full Name</Text>
+                <View style={styles.fieldInputWrap}>
+                  <MaterialIcons
+                    name="person"
+                    size={17}
+                    color={C.accentSoft}
+                    style={{ marginRight: 8 }}
+                  />
+                  <TextInput
+                    style={styles.fieldInput}
+                    value={name}
+                    onChangeText={setName}
+                    placeholder="Your name"
+                    placeholderTextColor={C.textMuted}
+                    autoCapitalize="words"
+                  />
                 </View>
-              ))}
+              </View>
+
+              {/* Email — read only, prefilled from Firebase Auth */}
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>Email</Text>
+                <View
+                  style={[styles.fieldInputWrap, styles.fieldInputDisabled]}
+                >
+                  <MaterialIcons
+                    name="email"
+                    size={17}
+                    color={C.textMuted}
+                    style={{ marginRight: 8 }}
+                  />
+                  <TextInput
+                    style={[styles.fieldInput, { color: C.textMuted }]}
+                    value={authEmail}
+                    editable={false}
+                    placeholder="your@email.com"
+                    placeholderTextColor={C.textMuted}
+                  />
+                  <MaterialIcons name="lock" size={14} color={C.textMuted} />
+                </View>
+                <Text style={styles.fieldHint}>Email cannot be changed</Text>
+              </View>
+
+              {/* Phone */}
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>Phone</Text>
+                <View style={styles.fieldInputWrap}>
+                  <MaterialIcons
+                    name="phone"
+                    size={17}
+                    color={C.accentSoft}
+                    style={{ marginRight: 8 }}
+                  />
+                  <TextInput
+                    style={styles.fieldInput}
+                    value={phone}
+                    onChangeText={setPhone}
+                    placeholder="+91 XXXXX XXXXX"
+                    placeholderTextColor={C.textMuted}
+                    keyboardType="phone-pad"
+                  />
+                </View>
+              </View>
+
+              {/* Save Button */}
               <TouchableOpacity
                 onPress={handleSave}
                 activeOpacity={0.88}
@@ -825,14 +854,13 @@ export default function ProfileScreen() {
     router.replace("/(auth)/landing");
   };
 
+  // ── FIX: Remove router.replace — let _layout handle redirect after userData updates ──
   const doRoleSwitch = async () => {
     setShowSwitchConfirm(false);
     const newRole =
       userData?.rolePreference === "consumer" ? "owner" : "consumer";
     if (updateUserProfile) await updateUserProfile({ rolePreference: newRole });
-    router.replace(
-      newRole === "owner" ? "/(owner)/my-restaurants" : "/(consumer)/explore",
-    );
+    // _layout.tsx watches userData changes and redirects automatically ✓
   };
 
   const handleDeleteComplete = async () => {
@@ -891,7 +919,7 @@ export default function ProfileScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: insets.bottom + 90 }}
       >
-        {/* ── Header with Dine Time Logo ── */}
+        {/* ── Header ── */}
         <LinearGradient
           colors={["#fff2e1", "#fde8c8", "#fff2e1"]}
           start={{ x: 0, y: 0 }}
@@ -899,7 +927,6 @@ export default function ProfileScreen() {
           style={[styles.header, { paddingTop: insets.top + 12 }]}
         >
           <View style={styles.headerTopRow}>
-            {/* Dine Time Logo */}
             <View style={styles.logoRow}>
               <Image
                 source={require("../../assets/DTime.png")}
@@ -1023,7 +1050,7 @@ export default function ProfileScreen() {
           <OptionRow
             icon="person-outline"
             label="Edit Profile"
-            subtitle="Name, email, phone & photo"
+            subtitle="Name, phone & photo"
             onPress={() => setShowEditProfile(true)}
           />
           <OptionRow
@@ -1130,8 +1157,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 20,
   },
-
-  // Dine Time Logo
   logoRow: { flexDirection: "row", alignItems: "center", gap: 9 },
   logoIcon: {
     width: 34,
@@ -1157,7 +1182,6 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     marginTop: 1,
   },
-
   helpBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -1170,7 +1194,6 @@ const styles = StyleSheet.create({
     borderColor: C.accentBorder,
   },
   helpBtnText: { color: C.accent, fontWeight: "600", fontSize: 13 },
-
   avatarSection: { alignItems: "center" },
   avatarWrap: { marginBottom: 10 },
   avatarImage: {
@@ -1203,7 +1226,6 @@ const styles = StyleSheet.create({
     borderColor: C.accentBorder,
   },
   roleBadgeText: { fontSize: 12, fontWeight: "600", color: C.accent },
-
   quickGrid: {
     flexDirection: "row",
     justifyContent: "space-around",
@@ -1230,7 +1252,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   quickLabel: { fontSize: 11, color: C.text, fontWeight: "500" },
-
   sectionCard: {
     backgroundColor: C.white,
     marginHorizontal: 14,
@@ -1276,7 +1297,6 @@ const styles = StyleSheet.create({
   optionLabel: { fontSize: 14, fontWeight: "500", color: C.text },
   optionLabelDanger: { color: C.error },
   optionSub: { fontSize: 11, color: C.textMuted, marginTop: 2 },
-
   noOfferBadge: {
     backgroundColor: C.accentBg,
     paddingHorizontal: 10,
@@ -1286,7 +1306,6 @@ const styles = StyleSheet.create({
     borderColor: C.accentBorder,
   },
   noOfferText: { fontSize: 11, fontWeight: "700", color: C.accentSoft },
-
   roleBannerCard: {
     marginHorizontal: 14,
     marginTop: 12,
@@ -1316,7 +1335,6 @@ const styles = StyleSheet.create({
   },
   roleBannerTitle: { fontSize: 14, fontWeight: "700", marginBottom: 3 },
   roleBannerSub: { fontSize: 12, color: C.textSub },
-
   logoutBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -1337,7 +1355,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 18,
   },
-
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.45)",
@@ -1369,7 +1386,6 @@ const styles = StyleSheet.create({
   },
   offersTitle: { fontSize: 18, fontWeight: "800", color: C.text },
   offersSub: { fontSize: 12, color: C.textMuted, marginTop: 2 },
-
   confirmSheet: {
     backgroundColor: C.white,
     borderTopLeftRadius: 24,
@@ -1422,7 +1438,6 @@ const styles = StyleSheet.create({
   },
   confirmActionDanger: { backgroundColor: C.error },
   confirmActionText: { fontSize: 14, fontWeight: "700", color: C.white },
-
   editSheet: {
     backgroundColor: C.white,
     borderTopLeftRadius: 24,
@@ -1471,7 +1486,14 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     backgroundColor: C.accentBg,
   },
+  fieldInputDisabled: { backgroundColor: C.divider, borderColor: C.divider },
   fieldInput: { flex: 1, fontSize: 14, color: C.text },
+  fieldHint: {
+    fontSize: 11,
+    color: C.textMuted,
+    marginTop: 4,
+    paddingHorizontal: 2,
+  },
   saveBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -1481,7 +1503,6 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   saveBtnText: { fontSize: 15, fontWeight: "700", color: C.white },
-
   offersSheet: {
     backgroundColor: C.white,
     borderTopLeftRadius: 24,
@@ -1548,7 +1569,6 @@ const styles = StyleSheet.create({
     borderColor: C.accentBorder,
   },
   soonBadgeText: { fontSize: 9, fontWeight: "700", color: C.accent },
-
   helpSheet: {
     backgroundColor: C.white,
     borderTopLeftRadius: 24,
@@ -1625,7 +1645,6 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   faqAText: { fontSize: 12, color: C.textSub, lineHeight: 18, paddingLeft: 14 },
-
   aboutSheet: {
     backgroundColor: C.white,
     borderTopLeftRadius: 24,

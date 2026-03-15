@@ -140,6 +140,16 @@ const FilterChip = ({
   );
 };
 
+// ── No image placeholder ──────────────────────────────────────────────────────
+const ImagePlaceholder = () => (
+  <View style={st.imagePlaceholder}>
+    <View style={st.placeholderIconWrap}>
+      <MaterialIcons name="restaurant" size={32} color={C.textMuted} />
+    </View>
+    <Text style={st.placeholderText}>No Image</Text>
+  </View>
+);
+
 export default function ManageRestaurantsScreen() {
   const insets = useSafeAreaInsets();
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
@@ -275,18 +285,20 @@ export default function ManageRestaurantsScreen() {
 
   const renderRestaurant = ({ item }: { item: Restaurant }) => {
     const statusConfig = getStatusConfig(item.status || "pending");
+    const hasCoverImage = !!item?.images?.coverImage;
+
     return (
       <View style={st.card}>
         <View style={st.imageContainer}>
-          <Image
-            source={
-              item?.images?.coverImage
-                ? { uri: item.images.coverImage }
-                : require("../../assets/Rest.jpg")
-            }
-            style={st.cardImage}
-            resizeMode="cover"
-          />
+          {hasCoverImage ? (
+            <Image
+              source={{ uri: item.images.coverImage }}
+              style={st.cardImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <ImagePlaceholder />
+          )}
           <View style={[st.statusBadge, { backgroundColor: statusConfig.bg }]}>
             <MaterialIcons
               name={statusConfig.icon}
@@ -517,6 +529,26 @@ const st = StyleSheet.create({
   },
   imageContainer: { position: "relative", width: "100%", height: 160 },
   cardImage: { width: "100%", height: "100%", backgroundColor: C.divider },
+
+  // ── Placeholder ──
+  imagePlaceholder: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: "#F3F4F6",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+  },
+  placeholderIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: C.divider,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  placeholderText: { fontSize: 12, color: C.textMuted, fontWeight: "600" },
+
   statusBadge: {
     position: "absolute",
     top: 10,

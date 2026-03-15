@@ -17,7 +17,6 @@ function RootLayoutNav() {
     if (loading || (user && !userData)) return;
 
     const inAuthGroup = segments[0] === "(auth)";
-    const inOnboardingGroup = segments[0] === "(onboarding)";
     const inConsumerGroup = segments[0] === "(consumer)";
     const inOwnerGroup = segments[0] === "(owner)";
     const inAdminGroup = segments[0] === "(admin)";
@@ -31,17 +30,8 @@ function RootLayoutNav() {
       return;
     }
 
-    // 2. Onboarding not done → onboarding
-    if (!userData?.fullName?.trim() || !userData?.phoneNumber?.trim()) {
-      if (!inOnboardingGroup) {
-        router.replace("/(onboarding)/tell-us-about-you");
-      }
-      setAppReady(true);
-      return;
-    }
-
-    // 3. Admin → admin dashboard
-    if (userData.isAdmin) {
+    // 2. Admin → admin dashboard
+    if (userData?.isAdmin) {
       if (!inAdminGroup) {
         router.replace("/(admin)/dashboard");
       }
@@ -49,8 +39,8 @@ function RootLayoutNav() {
       return;
     }
 
-    // 4. Owner/consumer → their sections
-    if (userData.rolePreference === "owner") {
+    // 3. Owner/consumer → their sections
+    if (userData?.rolePreference === "owner") {
       if (!inOwnerGroup) {
         router.replace("/(owner)/my-restaurants");
       }
@@ -64,7 +54,6 @@ function RootLayoutNav() {
   }, [user, userData, loading, segments]);
 
   // Block Stack from mounting until auth state is fully resolved
-  // This prevents landing page flash
   if (!appReady) {
     return (
       <View
@@ -83,7 +72,6 @@ function RootLayoutNav() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(auth)" />
-      <Stack.Screen name="(onboarding)" />
       <Stack.Screen name="(consumer)" />
       <Stack.Screen name="(owner)" />
       <Stack.Screen name="(admin)" />
