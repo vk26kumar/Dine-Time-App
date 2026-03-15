@@ -11,6 +11,8 @@ import {
   Dimensions,
   Image,
   Easing,
+  PixelRatio,
+  ScrollView,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
@@ -18,6 +20,13 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const { width: SW, height: SH } = Dimensions.get("window");
+
+// ─── Responsive scaling ───────────────────────────────────────────────────────
+const scale = SW / 390; // 390 = base design width (iPhone 14)
+const fs = (size: number) =>
+  Math.round(
+    PixelRatio.roundToNearestPixel(size * Math.min(scale, 1.1))
+  );
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const C = {
@@ -52,7 +61,7 @@ const FEATURES = [
 ];
 
 // ─── Sonar rings ──────────────────────────────────────────────────────────────
-const SONAR_D = 88;
+const SONAR_D = SW * 0.225; // was 88 — now scales with screen
 
 function SonarRing({
   delay,
@@ -309,14 +318,16 @@ export default function LandingScreen() {
       <View pointerEvents="none" style={st.glowTop} />
       <View pointerEvents="none" style={st.glowBottom} />
 
-      <View
-        style={[
+      <ScrollView
+        contentContainerStyle={[
           st.content,
           {
             paddingTop: insets.top + 18,
             paddingBottom: insets.bottom + 20,
           },
         ]}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
       >
         {/* LOGO HERO */}
         <Animated.View
@@ -416,7 +427,7 @@ export default function LandingScreen() {
         </View>
 
         {/* Push CTA to bottom */}
-        <View style={{ flex: 1 }} />
+        <View style={{ flex: 1, minHeight: 24 }} />
 
         {/* CTA — springs in last */}
         <Animated.View
@@ -459,7 +470,7 @@ export default function LandingScreen() {
             <Text style={st.footerLink}>Privacy Policy</Text>
           </Text>
         </Animated.View>
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -488,20 +499,23 @@ const st = StyleSheet.create({
   },
 
   content: {
-    flex: 1,
-    paddingHorizontal: 24,
+    flexGrow: 1,
+    paddingHorizontal: SW * 0.06, // was 24 — now scales with screen
     alignItems: "center",
   },
 
-  // Hero
+  // Hero — scales with screen width
   heroWrap: {
-    width: 160,
-    height: 160,
+    width: SW * 0.38,   // was 160
+    height: SW * 0.38,  // was 160
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 14,
   },
-  logo: { width: 88, height: 88 },
+  logo: {
+    width: SW * 0.22,   // was 88
+    height: SW * 0.22,  // was 88
+  },
 
   // Brand
   brandRow: {
@@ -511,19 +525,19 @@ const st = StyleSheet.create({
     marginBottom: 5,
   },
   brandDine: {
-    fontSize: 34,
+    fontSize: fs(34),           // was 34
     fontWeight: "900",
     color: "#1C0A00",
     letterSpacing: -1.2,
   },
   brandTime: {
-    fontSize: 34,
+    fontSize: fs(34),           // was 34
     fontWeight: "900",
     color: C.ember,
     letterSpacing: -1.2,
   },
   tagline: {
-    fontSize: 9.5,
+    fontSize: fs(9.5),          // was 9.5
     fontWeight: "800",
     color: C.textBrand,
     letterSpacing: 3,
@@ -544,23 +558,23 @@ const st = StyleSheet.create({
   // Headline
   headlineWrap: { alignSelf: "stretch", marginBottom: 10 },
   eyebrow: {
-    fontSize: 9.5,
+    fontSize: fs(9.5),          // was 9.5
     fontWeight: "800",
     color: C.ember,
     letterSpacing: 2.2,
     marginBottom: 7,
   },
   title: {
-    fontSize: 40,
+    fontSize: fs(40),           // was 40
     fontWeight: "900",
     color: C.textPrimary,
     letterSpacing: -1.4,
-    lineHeight: 48,
+    lineHeight: fs(48),         // was 48
   },
   sub: {
-    fontSize: 14,
+    fontSize: fs(14),           // was 14
     color: C.textSub,
-    lineHeight: 22,
+    lineHeight: fs(22),         // was 22
     marginBottom: 20,
     alignSelf: "stretch",
   },
@@ -602,12 +616,15 @@ const st = StyleSheet.create({
     marginLeft: 4,
   },
   cardTitle: {
-    fontSize: 13,
+    fontSize: fs(13),           // was 13
     fontWeight: "700",
     color: C.textPrimary,
     marginBottom: 2,
   },
-  cardSub: { fontSize: 11, color: C.textSub },
+  cardSub: {
+    fontSize: fs(11),           // was 11
+    color: C.textSub,
+  },
   statusDot: {
     width: 7,
     height: 7,
@@ -645,7 +662,7 @@ const st = StyleSheet.create({
     alignItems: "center",
   },
   btnLabel: {
-    fontSize: 15.5,
+    fontSize: fs(15.5),         // was 15.5
     fontWeight: "900",
     color: "#fff",
     letterSpacing: 0.3,
@@ -653,11 +670,14 @@ const st = StyleSheet.create({
 
   // Footer
   footer: {
-    fontSize: 11,
+    fontSize: fs(11),           // was 11
     color: "rgba(60,25,5,0.32)",
     textAlign: "center",
-    lineHeight: 17,
+    lineHeight: fs(17),         // was 17
     marginTop: 10,
   },
-  footerLink: { color: "rgba(233,90,10,0.55)", fontWeight: "600" },
+  footerLink: {
+    color: "rgba(233,90,10,0.55)",
+    fontWeight: "600",
+  },
 });
