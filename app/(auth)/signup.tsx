@@ -104,9 +104,15 @@ type VerifyState = "idle" | "sending" | "sent" | "verified";
 // ─── Screen ───────────────────────────────────────────────────────────────────
 export default function SignupScreen() {
   const router = useRouter();
-  const { createAuthAccount, createUserDocument } = useAuth();
+  const { createAuthAccount, createUserDocument, refreshUserData } = useAuth();
   const insets = useSafeAreaInsets();
 
+  // ── Tab: "signup" = Sign Up tab, "signin" = Sign In tab
+  const [activeTab, setActiveTab] = useState<"signup" | "signin">("signup");
+
+  // ── Form fields
+  const [fullName, setFullName] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [role, setRole] = useState<RolePreference>("consumer");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -133,6 +139,7 @@ export default function SignupScreen() {
   const toggleAnim = useRef(new Animated.Value(0)).current;
   const verifyScale = useRef(new Animated.Value(0)).current;
 
+  const phoneRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
   const confirmRef = useRef<TextInput>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -209,38 +216,22 @@ export default function SignupScreen() {
 
   const shake = () =>
     Animated.sequence([
-      Animated.timing(shakeX, {
-        toValue: 10,
-        duration: 50,
-        useNativeDriver: true,
-      }),
-      Animated.timing(shakeX, {
-        toValue: -10,
-        duration: 50,
-        useNativeDriver: true,
-      }),
-      Animated.timing(shakeX, {
-        toValue: 7,
-        duration: 50,
-        useNativeDriver: true,
-      }),
-      Animated.timing(shakeX, {
-        toValue: -7,
-        duration: 50,
-        useNativeDriver: true,
-      }),
-      Animated.timing(shakeX, {
-        toValue: 0,
-        duration: 50,
-        useNativeDriver: true,
-      }),
+      Animated.timing(shakeX, { toValue: 10, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeX, { toValue: -10, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeX, { toValue: 7, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeX, { toValue: -7, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeX, { toValue: 0, duration: 50, useNativeDriver: true }),
     ]).start();
 
-  // ── Role Toggle ──
-  const handleRoleToggle = (newRole: RolePreference) => {
-    setRole(newRole);
+  // ── Tab Toggle ──
+  const handleTabSwitch = (tab: "signup" | "signin") => {
+    if (tab === "signin") {
+      router.push("/(auth)/login");
+      return;
+    }
+    setActiveTab("signup");
     Animated.spring(toggleAnim, {
-      toValue: newRole === "consumer" ? 0 : 1,
+      toValue: 0,
       tension: 70,
       friction: 12,
       useNativeDriver: false,
@@ -282,11 +273,7 @@ export default function SignupScreen() {
       return;
     }
     if (!password || password.length < 6) {
-      showToast(
-        "error",
-        "Set your password",
-        "Enter at least 6 characters first.",
-      );
+      showToast("error", "Set your password", "Enter at least 6 characters first.");
       return;
     }
     setVerifyState("sending");
@@ -298,11 +285,7 @@ export default function SignupScreen() {
       await sendEmailVerification(currentUser);
       setVerifyState("sent");
       startPolling();
-      showToast(
-        "info",
-        "Verification sent",
-        `Check your inbox at ${email.trim()}`,
-      );
+      showToast("info", "Verification sent", `Check your inbox at ${email.trim()}`);
     } catch (e: any) {
       setVerifyState("idle");
       showToast(
@@ -319,12 +302,24 @@ export default function SignupScreen() {
 
   // ── Complete Signup ──
   const handleSignup = async () => {
+    // ── Required field validation ──
+    if (!fullName.trim()) {
+      shake();
+      showToast("error", "Name required", "Please enter your full name.");
+      return;
+    }
+    if (!phoneNumber.trim() || phoneNumber.trim().length < 10) {
+      shake();
+      showToast("error", "Phone required", "Enter a valid 10-digit phone number.");
+      return;
+    }
+    if (!email.trim()) {
+      shake();
+      showToast("error", "Email required", "Please enter your email address.");
+      return;
+    }
     if (verifyState !== "verified") {
-      showToast(
-        "error",
-        "Email not verified",
-        "Please verify your email first.",
-      );
+      showToast("error", "Email not verified", "Please verify your email first.");
       return;
     }
     if (!password || password.length < 6) {
@@ -334,18 +329,18 @@ export default function SignupScreen() {
     }
     if (password !== confirmPassword) {
       shake();
-      showToast(
-        "error",
-        "Passwords don't match",
-        "Please re-enter to confirm.",
-      );
+      showToast("error", "Passwords don't match", "Please re-enter to confirm.");
       return;
     }
+
     setLoading(true);
     try {
       // Auth account already created in handleSendVerification
-      // Just write Firestore doc — name/phone empty, filled from profile later
-      await createUserDocument(role);
+      // Write Firestore doc with all fields
+      await createUserDocument(role, fullName.trim(), phoneNumber.trim());
+      // ← Immediately sync the new doc into AuthContext state so
+      //   the profile screen shows name/phone without needing a re-login
+      await refreshUserData();
       showToast("success", "Account created!", "Welcome to DineTime.");
       setTimeout(() => {
         if (role === "owner") {
@@ -364,10 +359,8 @@ export default function SignupScreen() {
 
   const passwordStrength = () => {
     if (!password) return null;
-    if (password.length < 6)
-      return { label: "Too short", color: "#EF4444", w: "25%" };
-    if (password.length < 8)
-      return { label: "Weak", color: "#FF9F43", w: "50%" };
+    if (password.length < 6) return { label: "Too short", color: "#EF4444", w: "25%" };
+    if (password.length < 8) return { label: "Weak", color: "#FF9F43", w: "50%" };
     if (!/[A-Z]/.test(password) || !/[0-9]/.test(password))
       return { label: "Fair", color: "#FBBF24", w: "65%" };
     return { label: "Strong", color: "#10B981", w: "100%" };
@@ -393,7 +386,7 @@ export default function SignupScreen() {
         showsVerticalScrollIndicator={false}
         bounces={false}
       >
-        {/* ── Hero ── */}
+        {/* ── Hero — UNTOUCHED ── */}
         <View style={[styles.hero, { paddingTop: insets.top }]}>
           <LinearGradient
             colors={["#0D1826", "#132338", "#0D1826"]}
@@ -401,12 +394,8 @@ export default function SignupScreen() {
             end={{ x: 1, y: 1 }}
             style={StyleSheet.absoluteFill}
           />
-          <Animated.View
-            style={[styles.orb1, { transform: [{ scale: orb1 }] }]}
-          />
-          <Animated.View
-            style={[styles.orb2, { transform: [{ scale: orb2 }] }]}
-          />
+          <Animated.View style={[styles.orb1, { transform: [{ scale: orb1 }] }]} />
+          <Animated.View style={[styles.orb2, { transform: [{ scale: orb2 }] }]} />
           {[0.15, 0.38, 0.62, 0.85].map((r, i) => (
             <View key={i} style={[styles.diag, { left: SW * r }]} />
           ))}
@@ -416,11 +405,7 @@ export default function SignupScreen() {
             style={[styles.backBtn, { top: insets.top + 10 }]}
             activeOpacity={0.75}
           >
-            <MaterialIcons
-              name="arrow-back"
-              size={18}
-              color="rgba(255,255,255,0.65)"
-            />
+            <MaterialIcons name="arrow-back" size={18} color="rgba(255,255,255,0.65)" />
           </TouchableOpacity>
 
           <Animated.View
@@ -434,9 +419,7 @@ export default function SignupScreen() {
               style={styles.logoImage}
               resizeMode="contain"
             />
-            <Text style={styles.brandCaption}>
-              Join thousands of food lovers ✦
-            </Text>
+            <Text style={styles.brandCaption}>Join thousands of food lovers ✦</Text>
           </Animated.View>
 
           <View style={styles.arch}>
@@ -454,11 +437,9 @@ export default function SignupScreen() {
         >
           <Animated.View style={{ transform: [{ translateX: shakeX }] }}>
             <Text style={styles.formTitle}>Create account</Text>
-            <Text style={styles.formSubtitle}>
-              Start your dining journey today
-            </Text>
+            <Text style={styles.formSubtitle}>Start your dining journey today</Text>
 
-            {/* ── Role Toggle ── */}
+            {/* ── Sign Up / Sign In Tab Toggle ── */}
             <View style={styles.toggleWrap}>
               <Animated.View
                 style={[
@@ -475,47 +456,120 @@ export default function SignupScreen() {
               </Animated.View>
               <TouchableOpacity
                 style={styles.toggleBtn}
-                onPress={() => handleRoleToggle("consumer")}
+                onPress={() => handleTabSwitch("signup")}
                 activeOpacity={0.8}
               >
                 <MaterialIcons
-                  name="restaurant-menu"
+                  name="person-add"
                   size={14}
-                  color={role === "consumer" ? "#FFF" : "#9CA3AF"}
+                  color={activeTab === "signup" ? "#FFF" : "#9CA3AF"}
                 />
                 <Text
                   style={[
                     styles.toggleLabel,
-                    role === "consumer" && styles.toggleLabelActive,
+                    activeTab === "signup" && styles.toggleLabelActive,
                   ]}
                 >
-                  Consumer
+                  Sign Up
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.toggleBtn}
-                onPress={() => handleRoleToggle("owner")}
+                onPress={() => handleTabSwitch("signin")}
                 activeOpacity={0.8}
               >
                 <MaterialIcons
-                  name="storefront"
+                  name="login"
                   size={14}
-                  color={role === "owner" ? "#FFF" : "#9CA3AF"}
+                  color="#9CA3AF"
                 />
-                <Text
-                  style={[
-                    styles.toggleLabel,
-                    role === "owner" && styles.toggleLabelActive,
-                  ]}
-                >
-                  Owner
-                </Text>
+                <Text style={styles.toggleLabel}>Sign In</Text>
               </TouchableOpacity>
+            </View>
+
+            {/* ── Full Name ── */}
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Full Name <Text style={styles.required}>*</Text></Text>
+              <View
+                style={[
+                  styles.inputWrap,
+                  focused === "name" && styles.inputWrapFocused,
+                ]}
+              >
+                <LinearGradient
+                  colors={focused === "name" ? ["#FF5A5F", "#FF9F43"] : ["#F3F4F6", "#F3F4F6"]}
+                  style={styles.inputStrip}
+                >
+                  <MaterialIcons
+                    name="person-outline"
+                    size={16}
+                    color={focused === "name" ? "#FFF" : "#9CA3AF"}
+                  />
+                </LinearGradient>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="Your full name"
+                  placeholderTextColor="#C4CAD4"
+                  value={fullName}
+                  onChangeText={setFullName}
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                  editable={!loading}
+                  returnKeyType="next"
+                  onSubmitEditing={() => phoneRef.current?.focus()}
+                  onFocus={() => setFocused("name")}
+                  onBlur={() => setFocused(null)}
+                />
+              </View>
+            </View>
+
+            {/* ── Phone Number ── */}
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Phone Number <Text style={styles.required}>*</Text></Text>
+              <View
+                style={[
+                  styles.inputWrap,
+                  focused === "phone" && styles.inputWrapFocused,
+                ]}
+              >
+                <LinearGradient
+                  colors={focused === "phone" ? ["#FF5A5F", "#FF9F43"] : ["#F3F4F6", "#F3F4F6"]}
+                  style={styles.inputStrip}
+                >
+                  <MaterialIcons
+                    name="phone"
+                    size={16}
+                    color={focused === "phone" ? "#FFF" : "#9CA3AF"}
+                  />
+                </LinearGradient>
+                <TextInput
+                  ref={phoneRef}
+                  style={styles.textInput}
+                  placeholder="10-digit mobile number"
+                  placeholderTextColor="#C4CAD4"
+                  value={phoneNumber}
+                  onChangeText={(t) => setPhoneNumber(t.replace(/[^0-9]/g, ""))}
+                  keyboardType="phone-pad"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  editable={!loading}
+                  maxLength={10}
+                  returnKeyType="next"
+                  onSubmitEditing={() => passwordRef.current?.focus()}
+                  onFocus={() => setFocused("phone")}
+                  onBlur={() => setFocused(null)}
+                />
+                {phoneNumber.length === 10 && (
+                  <View style={styles.inputAction}>
+                    <MaterialIcons name="check-circle" size={18} color="#10B981" />
+                  </View>
+                )}
+              </View>
             </View>
 
             {/* ── Email + Verify ── */}
             <View style={styles.field}>
-              <Text style={styles.fieldLabel}>Email address</Text>
+              <Text style={styles.fieldLabel}>Email Address <Text style={styles.required}>*</Text></Text>
               <View
                 style={[
                   styles.inputWrap,
@@ -534,17 +588,9 @@ export default function SignupScreen() {
                   style={styles.inputStrip}
                 >
                   <MaterialIcons
-                    name={
-                      verifyState === "verified"
-                        ? "mark-email-read"
-                        : "mail-outline"
-                    }
+                    name={verifyState === "verified" ? "mark-email-read" : "mail-outline"}
                     size={16}
-                    color={
-                      verifyState === "verified" || focused === "email"
-                        ? "#FFF"
-                        : "#9CA3AF"
-                    }
+                    color={verifyState === "verified" || focused === "email" ? "#FFF" : "#9CA3AF"}
                   />
                 </LinearGradient>
                 <TextInput
@@ -599,10 +645,7 @@ export default function SignupScreen() {
                 )}
                 {verifyState === "verified" && (
                   <Animated.View
-                    style={[
-                      styles.verifyStatus,
-                      { transform: [{ scale: verifyScale }] },
-                    ]}
+                    style={[styles.verifyStatus, { transform: [{ scale: verifyScale }] }]}
                   >
                     <MaterialIcons name="verified" size={20} color="#059669" />
                   </Animated.View>
@@ -610,23 +653,13 @@ export default function SignupScreen() {
               </View>
               {verifyState === "sent" && (
                 <View style={styles.verifyHint}>
-                  <MaterialIcons
-                    name="info-outline"
-                    size={12}
-                    color="#2563EB"
-                  />
-                  <Text style={styles.verifyHintText}>
-                    Link sent · Checking automatically…
-                  </Text>
+                  <MaterialIcons name="info-outline" size={12} color="#2563EB" />
+                  <Text style={styles.verifyHintText}>Link sent · Checking automatically…</Text>
                 </View>
               )}
               {verifyState === "verified" && (
                 <View style={styles.verifyHint}>
-                  <MaterialIcons
-                    name="check-circle"
-                    size={12}
-                    color="#059669"
-                  />
+                  <MaterialIcons name="check-circle" size={12} color="#059669" />
                   <Text style={[styles.verifyHintText, { color: "#059669" }]}>
                     Email verified!
                   </Text>
@@ -636,7 +669,7 @@ export default function SignupScreen() {
 
             {/* ── Password ── */}
             <View style={styles.field}>
-              <Text style={styles.fieldLabel}>Password</Text>
+              <Text style={styles.fieldLabel}>Password <Text style={styles.required}>*</Text></Text>
               <View
                 style={[
                   styles.inputWrap,
@@ -644,11 +677,7 @@ export default function SignupScreen() {
                 ]}
               >
                 <LinearGradient
-                  colors={
-                    focused === "password"
-                      ? ["#FF5A5F", "#FF9F43"]
-                      : ["#F3F4F6", "#F3F4F6"]
-                  }
+                  colors={focused === "password" ? ["#FF5A5F", "#FF9F43"] : ["#F3F4F6", "#F3F4F6"]}
                   style={styles.inputStrip}
                 >
                   <MaterialIcons
@@ -691,16 +720,11 @@ export default function SignupScreen() {
                     <View
                       style={[
                         styles.strengthFill,
-                        {
-                          width: strength.w as any,
-                          backgroundColor: strength.color,
-                        },
+                        { width: strength.w as any, backgroundColor: strength.color },
                       ]}
                     />
                   </View>
-                  <Text
-                    style={[styles.strengthLabel, { color: strength.color }]}
-                  >
+                  <Text style={[styles.strengthLabel, { color: strength.color }]}>
                     {strength.label}
                   </Text>
                 </View>
@@ -709,14 +733,12 @@ export default function SignupScreen() {
 
             {/* ── Confirm Password ── */}
             <View style={styles.field}>
-              <Text style={styles.fieldLabel}>Confirm password</Text>
+              <Text style={styles.fieldLabel}>Confirm Password <Text style={styles.required}>*</Text></Text>
               <View
                 style={[
                   styles.inputWrap,
                   focused === "confirm" && styles.inputWrapFocused,
-                  confirmPassword &&
-                    confirmPassword !== password &&
-                    styles.inputWrapError,
+                  confirmPassword && confirmPassword !== password && styles.inputWrapError,
                 ]}
               >
                 <LinearGradient
@@ -760,13 +782,9 @@ export default function SignupScreen() {
                 {confirmPassword ? (
                   <View style={styles.inputAction}>
                     <MaterialIcons
-                      name={
-                        confirmPassword === password ? "check-circle" : "cancel"
-                      }
+                      name={confirmPassword === password ? "check-circle" : "cancel"}
                       size={18}
-                      color={
-                        confirmPassword === password ? "#10B981" : "#EF4444"
-                      }
+                      color={confirmPassword === password ? "#10B981" : "#EF4444"}
                     />
                   </View>
                 ) : (
@@ -785,6 +803,122 @@ export default function SignupScreen() {
               </View>
             </View>
 
+            {/* ── Role Selection Cards ── */}
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>
+                Join as <Text style={styles.required}>*</Text>
+              </Text>
+              <View style={styles.roleRow}>
+                {/* Consumer Card */}
+                <TouchableOpacity
+                  style={[
+                    styles.roleCard,
+                    role === "consumer" && styles.roleCardActive,
+                  ]}
+                  onPress={() => setRole("consumer")}
+                  activeOpacity={0.8}
+                >
+                  {role === "consumer" && (
+                    <LinearGradient
+                      colors={["#FF5A5F", "#FF7A2F", "#FF9F43"]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={StyleSheet.absoluteFill}
+                    />
+                  )}
+                  <View
+                    style={[
+                      styles.roleIconWrap,
+                      role === "consumer"
+                        ? styles.roleIconWrapActive
+                        : styles.roleIconWrapInactive,
+                    ]}
+                  >
+                    <MaterialIcons
+                      name="restaurant-menu"
+                      size={20}
+                      color={role === "consumer" ? "#FF6B35" : "#9CA3AF"}
+                    />
+                  </View>
+                  <Text
+                    style={[
+                      styles.roleCardTitle,
+                      role === "consumer" && styles.roleCardTitleActive,
+                    ]}
+                  >
+                    Consumer
+                  </Text>
+                  <Text
+                    style={[
+                      styles.roleCardSub,
+                      role === "consumer" && styles.roleCardSubActive,
+                    ]}
+                  >
+                    Discover & book tables
+                  </Text>
+                  {role === "consumer" && (
+                    <View style={styles.roleCheck}>
+                      <MaterialIcons name="check-circle" size={16} color="#FFF" />
+                    </View>
+                  )}
+                </TouchableOpacity>
+
+                {/* Owner Card */}
+                <TouchableOpacity
+                  style={[
+                    styles.roleCard,
+                    role === "owner" && styles.roleCardActive,
+                  ]}
+                  onPress={() => setRole("owner")}
+                  activeOpacity={0.8}
+                >
+                  {role === "owner" && (
+                    <LinearGradient
+                      colors={["#FF5A5F", "#FF7A2F", "#FF9F43"]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={StyleSheet.absoluteFill}
+                    />
+                  )}
+                  <View
+                    style={[
+                      styles.roleIconWrap,
+                      role === "owner"
+                        ? styles.roleIconWrapActive
+                        : styles.roleIconWrapInactive,
+                    ]}
+                  >
+                    <MaterialIcons
+                      name="storefront"
+                      size={20}
+                      color={role === "owner" ? "#FF6B35" : "#9CA3AF"}
+                    />
+                  </View>
+                  <Text
+                    style={[
+                      styles.roleCardTitle,
+                      role === "owner" && styles.roleCardTitleActive,
+                    ]}
+                  >
+                    Owner
+                  </Text>
+                  <Text
+                    style={[
+                      styles.roleCardSub,
+                      role === "owner" && styles.roleCardSubActive,
+                    ]}
+                  >
+                    List & manage restaurants
+                  </Text>
+                  {role === "owner" && (
+                    <View style={styles.roleCheck}>
+                      <MaterialIcons name="check-circle" size={16} color="#FFF" />
+                    </View>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+
             {/* ── Terms ── */}
             <Text style={styles.termsText}>
               By creating an account you agree to our{" "}
@@ -792,7 +926,7 @@ export default function SignupScreen() {
               <Text style={styles.termsLink}>Privacy Policy</Text>
             </Text>
 
-            {/* ── Create Account — always glowing ── */}
+            {/* ── Create Account Button ── */}
             <TouchableOpacity
               onPress={handleSignup}
               disabled={loading}
@@ -811,11 +945,7 @@ export default function SignupScreen() {
                   <>
                     <Text style={styles.signupLabel}>Create Account</Text>
                     <View style={styles.signupChevron}>
-                      <MaterialIcons
-                        name="arrow-forward"
-                        size={15}
-                        color="#FF6B35"
-                      />
+                      <MaterialIcons name="arrow-forward" size={15} color="#FF6B35" />
                     </View>
                   </>
                 )}
@@ -870,6 +1000,7 @@ const styles = StyleSheet.create({
   toastTitle: { fontSize: 13, fontWeight: "800", marginBottom: 2 },
   toastMsg: { fontSize: 11, color: "#6B7280", lineHeight: 15 },
 
+  // ── Hero — UNTOUCHED ──
   hero: {
     height: SH * 0.3,
     minHeight: 190,
@@ -941,6 +1072,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: SW * 0.65,
   },
 
+  // ── Form ──
   formWrap: {
     flex: 1,
     backgroundColor: "#F8F9FB",
@@ -961,7 +1093,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
 
-  // Toggle
+  // ── Sign Up / Sign In Toggle ──
   toggleWrap: {
     flexDirection: "row",
     backgroundColor: "#F0F1F5",
@@ -994,6 +1126,7 @@ const styles = StyleSheet.create({
   toggleLabel: { fontSize: 13, fontWeight: "700", color: "#9CA3AF" },
   toggleLabelActive: { color: "#FFFFFF" },
 
+  // ── Fields ──
   field: { marginBottom: 14 },
   fieldLabel: {
     fontSize: 11,
@@ -1002,6 +1135,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.1,
     marginBottom: 6,
   },
+  required: { color: "#FF5A5F" },
 
   inputWrap: {
     flexDirection: "row",
@@ -1058,7 +1192,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  // Verify
+  // ── Verify ──
   verifyBtn: { marginRight: 6, borderRadius: 8, overflow: "hidden" },
   verifyBtnGrad: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 },
   verifyBtnText: { fontSize: 12, fontWeight: "800", color: "#FFF" },
@@ -1076,7 +1210,7 @@ const styles = StyleSheet.create({
   },
   verifyHintText: { fontSize: 11, color: "#2563EB", fontWeight: "600" },
 
-  // Strength
+  // ── Strength ──
   strengthWrap: {
     flexDirection: "row",
     alignItems: "center",
@@ -1091,13 +1225,73 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   strengthFill: { height: "100%", borderRadius: 2 },
-  strengthLabel: {
+  strengthLabel: { fontSize: 11, fontWeight: "700", minWidth: 52, textAlign: "right" },
+
+  // ── Role Cards ──
+  roleRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  roleCard: {
+    flex: 1,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "#E9EBF0",
+    backgroundColor: "#FFFFFF",
+    paddingVertical: 16,
+    paddingHorizontal: 14,
+    alignItems: "flex-start",
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+    position: "relative",
+  },
+  roleCardActive: {
+    borderColor: "transparent",
+    shadowColor: "#FF5A5F",
+    shadowOpacity: 0.28,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  roleIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 11,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  roleIconWrapActive: {
+    backgroundColor: "rgba(255,255,255,0.25)",
+  },
+  roleIconWrapInactive: {
+    backgroundColor: "rgba(240,96,32,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(240,96,32,0.14)",
+  },
+  roleCardTitle: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#0D1826",
+    marginBottom: 3,
+  },
+  roleCardTitleActive: { color: "#FFFFFF" },
+  roleCardSub: {
     fontSize: 11,
-    fontWeight: "700",
-    minWidth: 52,
-    textAlign: "right",
+    color: "#9CA3AF",
+    lineHeight: 15,
+  },
+  roleCardSubActive: { color: "rgba(255,255,255,0.75)" },
+  roleCheck: {
+    position: "absolute",
+    top: 10,
+    right: 10,
   },
 
+  // ── Terms ──
   termsText: {
     fontSize: 12,
     color: "#9CA3AF",
@@ -1107,7 +1301,7 @@ const styles = StyleSheet.create({
   },
   termsLink: { color: "#FF5A5F", fontWeight: "700" },
 
-  // Create Account button — always glowing
+  // ── Create Account Button ──
   signupOuter: {
     borderRadius: 13,
     overflow: "hidden",
@@ -1125,12 +1319,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     gap: 10,
   },
-  signupLabel: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: "#FFF",
-    letterSpacing: 0.2,
-  },
+  signupLabel: { fontSize: 15, fontWeight: "800", color: "#FFF", letterSpacing: 0.2 },
   signupChevron: {
     width: 26,
     height: 26,

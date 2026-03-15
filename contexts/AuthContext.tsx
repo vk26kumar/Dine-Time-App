@@ -18,7 +18,12 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
   createAuthAccount: (email: string, password: string) => Promise<void>;
-  createUserDocument: (rolePreference: RolePreference) => Promise<void>;
+  createUserDocument: (
+    rolePreference: RolePreference,
+    fullName?: string,
+    phoneNumber?: string
+  ) => Promise<void>;
+  refreshUserData: () => Promise<void>;
   logout: () => Promise<void>;
   updateUserProfile: (data: Partial<User>) => Promise<void>;
 }
@@ -117,7 +122,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  // 🔹 NEW — Step 1 of new signup flow
+  // 🔹 Step 1 of new signup flow
   // Creates Firebase Auth account only, no Firestore doc yet
   const createAuthAccount = async (email: string, password: string) => {
     const existing = auth.currentUser;
@@ -126,18 +131,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     await createUserWithEmailAndPassword(auth, email, password);
   };
 
-  // 🔹 NEW — Step 2 of new signup flow
-  // Writes Firestore doc only — Auth account already exists from createAuthAccount
-  // fullName and phoneNumber left empty — user fills from profile later
-  const createUserDocument = async (rolePreference: RolePreference) => {
+  // 🔹 Step 2 of new signup flow
+  // Writes Firestore doc — now includes fullName and phoneNumber from signup form
+  const createUserDocument = async (
+    rolePreference: RolePreference,
+    fullName: string = "",
+    phoneNumber: string = "",
+  ) => {
     const currentUser = auth.currentUser;
     if (!currentUser) throw new Error("No authenticated user found.");
 
     await setDoc(doc(db, "users", currentUser.uid), {
       uid: currentUser.uid,
       email: currentUser.email,
-      fullName: "",
-      phoneNumber: "",
+      fullName,
+      phoneNumber,
       rolePreference,
       location: null,
       coordinates: null,
@@ -150,9 +158,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     });
 
     console.log(
-      "AuthContext: User document created with role:",
-      rolePreference,
+      "AuthContext: User document created — role:", rolePreference,
+      "| name:", fullName,
+      "| phone:", phoneNumber,
     );
+  };
+
+  // 🔹 Manually re-fetch Firestore doc and update local userData state.
+  // Called right after createUserDocument() so the profile screen
+  // doesn't have to wait for the next onAuthStateChanged event.
+  const refreshUserData = async () => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+    try {
+      const userDocRef = doc(db, "users", currentUser.uid);
+      const userDoc = await getDoc(userDocRef);
+      if (userDoc.exists()) {
+        const data = userDoc.data();
+        setUserData({
+          ...data,
+          createdAt: data.createdAt?.toDate(),
+          updatedAt: data.updatedAt?.toDate(),
+        } as User);
+        console.log("AuthContext: refreshUserData — userData updated in state");
+      }
+    } catch (error) {
+      console.error("AuthContext: refreshUserData error", error);
+    }
   };
 
   const logout = async () => {
@@ -209,6 +241,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         signUp,
         createAuthAccount,
         createUserDocument,
+        refreshUserData,
         logout,
         updateUserProfile,
       }}
