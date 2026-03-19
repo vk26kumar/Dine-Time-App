@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.project.dinetime",
+    "sha256_cert_fingerprints": ["AC:33:34:87:78:51:19:5D:F9:DE:AC:02:2B:4E:49:3E:7E:CE:F5:EE:E4:2A:6A:96:84:20:29:7C:E1:D7:27:EA"]
+  }
+}]
