@@ -12,15 +12,24 @@
           {
             "key": "Content-Type",
             "value": "application/json"
+          },
+          {
+            "key": "Access-Control-Allow-Origin",
+            "value": "*"
           }
         ]
       }
     ],
     "rewrites": [
       {
+        "source": "/.well-known/assetlinks.json",
+        "destination": "/assetlinks.json"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }
-    ]
+    ],
+    "cleanUrls": true
   }
 }
