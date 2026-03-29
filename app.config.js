@@ -5,7 +5,7 @@ export default {
     name: "DineTime",
     slug: "dinetime",
     scheme: "dinetime",
-    version: "1.0.0",
+    version: "1.0.2",
     orientation: "portrait",
     icon: "./assets/icon.png",
     userInterfaceStyle: "automatic",
@@ -41,7 +41,7 @@ export default {
 
     android: {
       package: "com.project.dinetime",
-      versionCode: 1,
+      versionCode: 10,
       adaptiveIcon: {
         foregroundImage: "./assets/adaptive-icon.png",
         backgroundColor: "#ffffff"
