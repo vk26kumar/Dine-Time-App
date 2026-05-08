@@ -12,7 +12,6 @@
 
 **[📲 Download on Google Play](https://play.google.com/store/apps/details?id=com.project.dinetime)**
 
-*B.Tech Final Year Project — Madan Mohan Malaviya University of Technology, Gorakhpur*
 
 </div>
 
