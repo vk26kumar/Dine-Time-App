@@ -360,20 +360,13 @@ Hosts:
 
 ## 👨‍💻 Authors
 
-| Name | Roll No. | GitHub |
+| Name | GitHub |
 |---|---|---|
-| **Vishal Kumar** | 2023011085 | [@vk26kumar](https://github.com/vk26kumar) |
-
-
-## 📄 License
-
-This project was developed as an academic submission for the B.Tech degree at MMMUT Gorakhpur. All rights reserved by the authors.
-
----
+| **Vishal Kumar** | [@vk26kumar](https://github.com/vk26kumar) |
 
 <div align="center">
 
-Made with ❤️ in Gorakhpur, India
+
 
 [![Download on Google Play](https://img.shields.io/badge/Download-Google_Play-green?style=for-the-badge&logo=google-play)](https://play.google.com/store/apps/details?id=com.project.dinetime)
 
